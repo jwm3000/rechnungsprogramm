@@ -92,7 +92,7 @@
 	/** Rundes Symbol für wiederkehrende Rechnungen bzw. Kunden mit Dauerrechnung. */
 	const recDot = (title = 'Wiederkehrende Rechnung') => `<span class="rec-dot" title="${title}" aria-label="${title}">${icon('repeat')}</span>`;
 	const withRec = (name, on, title) => `<span class="name-rec"><span class="nm">${name}</span>${on ? recDot(title) : ''}</span>`;
-	const STATE_LABEL = { draft: 'Entwurf', open: 'Offen', overdue: 'Überfällig', paid: 'Bezahlt', cancelled: 'Storniert', storno: 'Storno', sent: 'Offen', accepted: 'Angenommen', declined: 'Abgelehnt', expired: 'Abgelaufen' };
+	const STATE_LABEL = { draft: 'Entwurf', open: 'Offen', overdue: 'Überfällig', partial: 'Teilweise bezahlt', paid: 'Bezahlt', cancelled: 'Storniert', storno: 'Storno', sent: 'Offen', accepted: 'Angenommen', declined: 'Abgelehnt', expired: 'Abgelaufen' };
 	const badge = (state, extra = '') => `<span class="badge b-${state}">${STATE_LABEL[state] || state}${extra}</span>`;
 	const MODE_LABEL = { send: 'Automatisch senden', issue: 'Ausstellen (ohne Mail)', draft: 'Entwurf zur Prüfung' };
 	const INTERVALS = { 1: 'monatlich', 2: 'alle 2 Monate', 3: 'vierteljährlich', 6: 'halbjährlich', 12: 'jährlich', 24: 'alle 2 Jahre', 36: 'alle 3 Jahre' };
@@ -397,8 +397,8 @@
 	}
 
 	function updateNavCounts() {
-		const open = S.invoices.filter((i) => i.state === 'open' || i.state === 'overdue');
-		const overdue = open.filter((i) => i.state === 'overdue').length;
+		const open = S.invoices.filter((i) => i.state === 'open' || i.state === 'overdue' || i.state === 'partial');
+		const overdue = open.filter((i) => i.days_overdue > 0).length;
 		const due = S.recurring.filter((r) => r.due).length;
 		const set = (h, txt, alert) => { const el = $(`[data-count="${h}"]`); if (el) { el.textContent = txt || ''; el.classList.toggle('alert', !!alert); } };
 		set('#/rechnungen', open.length ? (overdue ? overdue + ' / ' : '') + open.length : '', overdue);
@@ -521,8 +521,8 @@
 							<div class="list-item">
 								<button class="check" data-pay="${i.id}" title="Zahlungseingang abhaken" aria-label="Rechnung ${esc(i.number)} als bezahlt abhaken">${icon('check')}</button>
 								<a class="li-main" href="#/rechnung/${i.id}" style="text-decoration:none"><div class="li-title">${withRec(esc(i.recipient.name), i.is_recurring)}</div>
-									<div class="li-sub"><span class="mono">${esc(i.number)}</span> · ${date(i.invoice_date)}${i.state === 'overdue' ? ` · <span style="color:var(--bad);font-weight:700">${i.days_overdue} Tage überfällig</span>` : i.payment_days > 0 ? ' · fällig ' + date(i.due_date) : ''}</div></a>
-								<b class="num">${money(i.gross)}</b>
+									<div class="li-sub"><span class="mono">${esc(i.number)}</span> · ${date(i.invoice_date)}${i.state === 'partial' ? ` · <span style="color:var(--warn);font-weight:700">teilweise bezahlt</span>` : ''}${i.days_overdue > 0 ? ` · <span style="color:var(--bad);font-weight:700">${i.days_overdue} Tage überfällig</span>` : i.state !== 'partial' && i.payment_days > 0 ? ' · fällig ' + date(i.due_date) : ''}</div></a>
+								<b class="num">${money(i.open)}</b>
 							</div>`).join('')}</div>` : '<div class="empty"><span class="big">[ ✓ ]</span>Alles bezahlt.</div>'}</div>
 					</div>
 				</div>
@@ -651,7 +651,7 @@
 		try {
 			await api('invoice_pay', { id, date: S.today });
 			await refresh();
-			toast('Zahlungseingang abgehakt', { action: 'Rückgängig', onAction: async () => { await api('invoice_unpay', { id }); await refresh(); after?.(); } });
+			toast('Vollständig bezahlt', { action: 'Rückgängig', onAction: async () => { await api('invoice_unpay', { id }); await refresh(); after?.(); } });
 			setTimeout(() => after?.(), 350);
 		} catch (e) { btn.classList.remove('on'); fail(e); }
 	}
@@ -678,7 +678,7 @@
 		let search = q.q || '';
 		const filters = [['all', 'Alle'], ['open', 'Offen'], ['overdue', 'Überfällig'], ['paid', 'Bezahlt'], ['draft', 'Entwürfe'], ['cancelled', 'Storniert']];
 		const match = (i) => {
-			if (f === 'open' && !(i.state === 'open' || i.state === 'overdue')) return false;
+			if (f === 'open' && !(i.state === 'open' || i.state === 'overdue' || i.state === 'partial')) return false;
 			if (f !== 'all' && f !== 'open' && f !== 'cancelled' && i.state !== f) return false;
 			if (f === 'cancelled' && !(i.state === 'cancelled' || i.state === 'storno')) return false;
 			if (year && i.invoice_date.slice(0, 4) !== year) return false;
@@ -702,20 +702,20 @@
 		const draw = () => {
 			store.set('inv.f', f); store.set('inv.year', year);
 			const base = S.invoices.filter((i) => !year || i.invoice_date.slice(0, 4) === year);
-			const count = (k) => base.filter((i) => k === 'all' ? true : k === 'open' ? (i.state === 'open' || i.state === 'overdue') : k === 'cancelled' ? (i.state === 'cancelled' || i.state === 'storno') : i.state === k).length;
+			const count = (k) => base.filter((i) => k === 'all' ? true : k === 'open' ? (i.state === 'open' || i.state === 'overdue' || i.state === 'partial') : k === 'cancelled' ? (i.state === 'cancelled' || i.state === 'storno') : i.state === k).length;
 			$('#chips').innerHTML = filters.map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-f="${k}">${l} <span class="n">${count(k)}</span></button>`).join('');
 			$$('#chips .chip').forEach((c) => (c.onclick = () => { f = c.dataset.f; draw(); }));
 			const rows = S.invoices.filter(match);
 			const sum = rows.filter((i) => i.status !== 'draft').reduce((a, i) => a + i.gross, 0);
-			const open = rows.filter((i) => i.state === 'open' || i.state === 'overdue').reduce((a, i) => a + i.gross, 0);
+			const open = rows.filter((i) => i.state === 'open' || i.state === 'overdue' || i.state === 'partial').reduce((a, i) => a + i.open, 0);
 			$('#list').innerHTML = rows.length ? `<table class="table resp"><thead><tr><th style="width:44px" title="Bezahlt">✓</th><th>Nr.</th><th>Kunde</th><th class="hide-m">Datum</th><th>Status</th><th class="th-r">Betrag</th></tr></thead><tbody>
 				${rows.map((i) => `<tr class="click" data-id="${i.id}">
-					<td class="m-a"><button class="check ${i.state === 'paid' ? 'on' : ''} ${['open', 'overdue', 'paid'].includes(i.state) ? '' : 'na'}" data-pay="${i.id}" aria-label="Bezahlt umschalten" title="${i.state === 'paid' ? 'Bezahlt am ' + date(i.paid_at) + ' – zum Zurücknehmen klicken' : 'Zahlungseingang abhaken'}">${icon('check')}</button></td>
+					<td class="m-a"><button class="check ${i.state === 'paid' ? 'on' : i.state === 'partial' ? 'half' : ''} ${['open', 'overdue', 'paid', 'partial'].includes(i.state) ? '' : 'na'}" data-pay="${i.id}" aria-label="Bezahlt umschalten" title="${i.state === 'paid' ? 'Bezahlt am ' + date(i.paid_at) + ' – zum Zurücknehmen klicken' : i.state === 'partial' ? 'Teilweise bezahlt – Restbetrag ' + money(i.open) + ' abhaken' : 'Zahlungseingang abhaken'}">${icon('check')}</button></td>
 					<td class="m-hide mono">${esc(i.number || '—')}</td>
 					<td class="m-b strong"><div>${withRec(esc(i.recipient.name || 'Ohne Empfänger'), i.is_recurring)}</div><div class="sub">${esc(i.item_names || '')}</div></td>
 					<td class="m-c hide-m-not muted nowrap"><span class="show-m mono">${esc(i.number || 'Entwurf')} · </span>${date(i.invoice_date)}</td>
-					<td class="m-e">${badge(i.state, i.state === 'overdue' ? ' · ' + i.days_overdue + ' T.' : '')}${i.sent_at ? ` <span class="muted" title="Per E-Mail versendet am ${date(i.sent_at)}">${icon('mail')}</span>` : ''}</td>
-					<td class="m-d td-r num strong" style="${i.gross < 0 ? 'color:var(--muted)' : ''}">${money(i.gross)}</td>
+					<td class="m-e">${badge(i.state, i.days_overdue > 0 ? ' · ' + i.days_overdue + ' T.' : '')}${i.sent_at ? ` <span class="muted" title="Per E-Mail versendet am ${date(i.sent_at)}">${icon('mail')}</span>` : ''}</td>
+					<td class="m-d td-r num strong" style="${i.gross < 0 ? 'color:var(--muted)' : ''}">${money(i.gross)}${i.state === 'partial' ? `<div class="sub" style="font-weight:600">offen ${money(i.open)}</div>` : ''}</td>
 				</tr>`).join('')}</tbody></table>
 				<div class="sumbar"><span>${rows.length} Einträge</span><span>Summe <b class="num">${money(sum)}</b></span>${open ? `<span>davon offen <b class="num">${money(open)}</b></span>` : ''}</div>`
 				: '<div class="empty"><span class="big">[ ]</span>Keine Rechnungen gefunden.</div>';
@@ -768,7 +768,7 @@
 		const main = $('#main');
 		const s = inv.state;
 		const isInv = inv.kind === 'invoice';
-		const canPay = isInv && (s === 'open' || s === 'overdue');
+		const canPay = isInv && (s === 'open' || s === 'overdue' || s === 'partial');
 		const pdfUrl = 'api.php?a=pdf&id=' + inv.id;
 		const title = (inv.kind === 'storno' ? 'Stornorechnung ' : 'Rechnung ') + inv.number;
 		main.innerHTML = `<div class="page">
@@ -780,16 +780,17 @@
 				<div class="grid" style="align-content:start">
 					<div class="card">
 						<div class="status-hero">
-							<div class="grow"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">${badge(s, s === 'overdue' ? ' seit ' + inv.days_overdue + ' Tagen' : s === 'paid' ? ' am ' + date(inv.paid_at) : '')}
+							<div class="grow"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">${badge(s, s === 'overdue' ? ' seit ' + inv.days_overdue + ' Tagen' : s === 'paid' ? ' am ' + date(inv.paid_at) : '')}${s === 'partial' && inv.days_overdue > 0 ? `<span class="badge b-overdue">${inv.days_overdue} Tage überfällig</span>` : ''}
 								${inv.sent_at ? `<span class="badge plain">${icon('mail')} versendet ${date(inv.sent_at)}</span>` : ''}
 								${inv.reminder_level ? `<span class="badge b-warn">${inv.reminder_level}× erinnert</span>` : ''}
 								${inv.source === 'import' ? '<span class="badge plain" title="Aus den alten PDF-Rechnungen übernommen">Import</span>' : ''}</div>
 								<div class="amount num">${money(inv.gross)}</div>
+								${inv.paid > 0 && s !== 'paid' ? `<div class="pay-progress"><div class="meter"><i style="width:${Math.min(100, inv.paid / inv.gross * 100)}%;background:var(--ok)"></i></div><div class="muted" style="font-size:13px;margin-top:6px">bezahlt <b class="num" style="color:var(--ink)">${money(inv.paid)}</b> · offen <b class="num" style="color:var(--ink)">${money(inv.open)}</b></div></div>` : ''}
 								<div class="muted">${withRec(esc(inv.recipient.name), inv.is_recurring)} · ${date(inv.invoice_date)}</div></div>
 							<div class="btns">
 								${canPay ? `<button class="btn primary" data-pay>${icon('check')} Zahlung erhalten</button>` : ''}
-								${s === 'paid' ? `<button class="btn" data-unpay>Zahlung zurücknehmen</button>` : ''}
-								${s === 'overdue' || (s === 'open' && inv.payment_days > 0) ? `<button class="btn" data-remind>${icon('bell')} Erinnerung</button>` : ''}
+								${(inv.payments || []).length ? `<button class="btn" data-unpay>${(inv.payments || []).length > 1 ? 'Letzte Zahlung zurücknehmen' : 'Zahlung zurücknehmen'}</button>` : ''}
+								${inv.days_overdue > 0 || (s === 'open' && inv.payment_days > 0) ? `<button class="btn" data-remind>${icon('bell')} Erinnerung</button>` : ''}
 							</div>
 						</div>
 						<dl class="facts">
@@ -824,6 +825,11 @@
 						</div>
 						<p class="muted" style="font-size:12.5px;margin-top:12px">Ausgestellte Rechnungen lassen sich nicht mehr ändern. Zum Korrigieren stornieren und eine Kopie neu ausstellen.</p>
 					</div>
+					${(inv.payments || []).length ? `<div class="card card-pad">
+						<h3 style="margin-bottom:6px">Zahlungen</h3>
+						<div class="list">${inv.payments.map((p) => `<div class="list-item"><div class="li-main"><div class="li-title num">${money(p.amount)}</div><div class="li-sub">${date(p.date)}${p.note ? ' · ' + esc(p.note) : ''}</div></div><button class="btn sm ghost icon" data-delpay="${p.id}" title="Zahlung löschen" aria-label="Zahlung löschen">${icon('trash')}</button></div>`).join('')}</div>
+						<div style="display:flex;justify-content:space-between;margin-top:10px;font-weight:700"><span>Summe</span><span class="num">${money(inv.paid)} von ${money(inv.gross)}</span></div>
+					</div>` : ''}
 					<div class="card card-pad">
 						<h3 style="margin-bottom:10px">Interne Notiz</h3>
 						<textarea id="note" rows="3" placeholder="Nur für dich – erscheint nicht auf der Rechnung">${esc(inv.note || '')}</textarea>
@@ -843,12 +849,23 @@
 		$('#email').oninput = saveMeta;
 		const reload = async (updated) => { await refresh(); invoiceDetail(updated || await api('invoice', undefined, { query: { id: inv.id } })); };
 		$('[data-pay]', main)?.addEventListener('click', async () => {
-			const r = await confirmDialog('Zahlungseingang abhaken', `Rechnung ${esc(inv.number)} über ${money(inv.gross)} als bezahlt markieren.`, 'Bezahlt', {
-				extra: `<div class="form-grid" style="margin-top:14px"><label class="field c3"><span>Eingegangen am</span><input type="date" name="date" value="${S.today}"></label><label class="field c3"><span>Betrag</span><input type="text" inputmode="decimal" name="amount" value="${dec(inv.gross)}"></label></div>`,
+			const r = await confirmDialog('Zahlung erhalten', inv.paid > 0
+				? `Rechnung ${esc(inv.number)}: bereits ${money(inv.paid)} von ${money(inv.gross)} bezahlt, offen <b>${money(inv.open)}</b>.`
+				: `Rechnung ${esc(inv.number)} über <b>${money(inv.gross)}</b>. Bei einem kleineren Betrag wird sie als teilweise bezahlt markiert.`, 'Speichern', {
+				extra: `<div class="form-grid" style="margin-top:14px"><label class="field c3"><span>Eingegangen am</span><input type="date" name="date" value="${S.today}"></label><label class="field c3"><span>Betrag €</span><input type="text" inputmode="decimal" name="amount" value="${dec(inv.open)}"></label><label class="field c6"><span>Notiz <small>(optional, z. B. Bar, Überweisung)</small></span><input type="text" name="note"></label></div>`,
 			});
-			if (r) try { await reload(await api('invoice_pay', { id: inv.id, date: r.date, amount: num(r.amount) })); toast('Zahlungseingang abgehakt'); } catch (e) { fail(e); }
+			if (!r) return;
+			try {
+				const u = await api('invoice_pay', { id: inv.id, date: r.date, amount: num(r.amount), note: r.note });
+				await reload(u);
+				toast(u.state === 'paid' ? 'Vollständig bezahlt' : `Teilzahlung erfasst – offen ${money(u.open)}`);
+			} catch (e) { fail(e); }
 		});
-		$('[data-unpay]', main)?.addEventListener('click', async () => { try { await reload(await api('invoice_unpay', { id: inv.id })); } catch (e) { fail(e); } });
+		$('[data-unpay]', main)?.addEventListener('click', async () => { try { await reload(await api('invoice_unpay', { id: inv.id })); toast('Zahlung zurückgenommen'); } catch (e) { fail(e); } });
+		$$('[data-delpay]', main).forEach((b) => (b.onclick = async () => {
+			if (!await confirmDialog('Zahlung löschen?', 'Die Zahlung wird entfernt und der offene Betrag neu berechnet.', 'Löschen', { danger: true })) return;
+			try { await reload(await api('invoice_unpay', { id: inv.id, payment_id: +b.dataset.delpay })); } catch (e) { fail(e); }
+		}));
 		$('[data-dup]', main).onclick = async () => { try { const n = await api('invoice_duplicate', { id: inv.id }); await refresh(); go('#/rechnung/' + n.id); toast('Kopie als Entwurf angelegt'); } catch (e) { fail(e); } };
 		$('[data-cancel]', main)?.addEventListener('click', async () => {
 			const ok = await confirmDialog('Rechnung stornieren?', `Es wird eine Stornorechnung mit eigener Nummer über ${money(-inv.gross)} ausgestellt. Die Rechnung ${esc(inv.number)} gilt dann als storniert.`, 'Stornieren', { danger: true });
@@ -1333,7 +1350,7 @@
 		const c = await api('customer', undefined, { query: { id } });
 		const issued = c.invoices.filter((i) => i.status !== 'draft');
 		const revenue = issued.reduce((a, i) => a + i.gross, 0);
-		const open = c.invoices.filter((i) => i.state === 'open' || i.state === 'overdue');
+		const open = c.invoices.filter((i) => i.state === 'open' || i.state === 'overdue' || i.state === 'partial');
 		const years = {};
 		issued.forEach((i) => { const y = i.invoice_date.slice(0, 4); years[y] = (years[y] || 0) + i.gross; });
 		main.innerHTML = `<div class="page">
@@ -1341,14 +1358,14 @@
 				`<button class="btn" data-edit>${icon('edit')} Bearbeiten</button><button class="btn" data-rec>${icon('repeat')}<span class="hide-m">Dauerrechnung</span></button><a class="btn" href="#/angebot/neu?kunde=${c.id}">${icon('offer')}<span class="hide-m">Angebot</span></a><a class="btn primary" href="#/rechnung/neu?kunde=${c.id}">${icon('plus')} Rechnung</a>`)}
 			<div class="grid g4 kpis" style="margin-bottom:16px">
 				<div class="card kpi"><div class="label">Umsatz gesamt</div><div class="value num">${moneyShort(revenue)}</div><div class="sub">${issued.filter((i) => i.kind === 'invoice').length} Rechnungen</div></div>
-				<div class="card kpi"><div class="label">Offen</div><div class="value num">${money(open.reduce((a, i) => a + i.gross, 0))}</div><div class="sub">${open.length} Rechnung${open.length === 1 ? '' : 'en'}</div></div>
+				<div class="card kpi"><div class="label">Offen</div><div class="value num">${money(open.reduce((a, i) => a + i.open, 0))}</div><div class="sub">${open.length} Rechnung${open.length === 1 ? '' : 'en'}</div></div>
 				<div class="card kpi"><div class="label">Kunde seit</div><div class="value">${c.created_at ? c.created_at.slice(0, 4) : '—'}</div><div class="sub">letzte Rechnung ${date(issued[0]?.invoice_date) || '—'}</div></div>
 				<div class="card kpi"><div class="label">Dauerrechnung</div><div class="value num">${c.recurring.filter((r) => +r.active).length ? money(c.recurring.filter((r) => +r.active).reduce((a, r) => a + r.yearly, 0)) : '—'}</div><div class="sub">${c.recurring.filter((r) => +r.active).length ? 'pro Jahr' : 'keine aktiv'}</div></div>
 			</div>
 			<div class="grid g-main">
 				<div class="card"><div class="card-head"><h2>Rechnungen</h2></div><div class="table-wrap">${c.invoices.length ? `<table class="table resp"><tbody>
 					${c.invoices.map((i) => `<tr class="click" data-id="${i.id}">
-						<td class="m-a"><button class="check ${i.state === 'paid' ? 'on' : ''} ${['open', 'overdue', 'paid'].includes(i.state) ? '' : 'na'}" data-pay="${i.id}" aria-label="Bezahlt">${icon('check')}</button></td>
+						<td class="m-a"><button class="check ${i.state === 'paid' ? 'on' : i.state === 'partial' ? 'half' : ''} ${['open', 'overdue', 'paid', 'partial'].includes(i.state) ? '' : 'na'}" data-pay="${i.id}" aria-label="Bezahlt">${icon('check')}</button></td>
 						<td class="m-b"><span class="mono">${esc(i.number || 'Entwurf')}</span> <span class="muted">· ${date(i.invoice_date)}</span><div class="sub">${esc(i.item_names || '')}</div></td>
 						<td class="m-e">${badge(i.state)}</td>
 						<td class="m-d td-r num strong">${money(i.gross)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Noch keine Rechnungen.</div>'}</div></div>
@@ -1750,7 +1767,11 @@
 			<div class="hint" style="margin-top:16px">Original-PDFs der importierten Rechnungen und Belege liegen im Datenordner unter <code>files/</code>. Rechnungen sind in Österreich 7 Jahre aufzubewahren.</div>`,
 		}[tab];
 		main.innerHTML = `<div class="page" style="max-width:1080px">${pageHead('Einstellungen')}
-			<nav class="tabs">${tabs.map(([k, l]) => `<a href="#/einstellungen/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</nav>
+			<div class="tabs-wrap">
+				<button type="button" class="tabs-arrow left" data-tabs="-1" aria-label="Reiter nach links">${icon('left')}</button>
+				<nav class="tabs" id="stabs">${tabs.map(([k, l]) => `<a href="#/einstellungen/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</nav>
+				<button type="button" class="tabs-arrow right" data-tabs="1" aria-label="Reiter nach rechts">${icon('right')}</button>
+			</div>
 			<form id="sf" class="card card-pad" autocomplete="off">${body}</form>
 			${['firma', 'bank', 'texte', 'nummern'].includes(tab) ? `<div class="btns" style="margin-top:14px;justify-content:flex-end"><button class="btn primary" data-save>Speichern</button></div>` : ''}</div>`;
 		if (tab === 'firma') plzAssist($('[name=zip]', main), $('[name=city]', main), null);
@@ -1769,6 +1790,19 @@
 			try { await api('settings_save', fd); await refresh(); toast('Einstellungen gespeichert'); } catch (e) { fail(e); }
 		});
 		$('#sf').onsubmit = (e) => e.preventDefault();
+		// Reitermenü: Pfeile links/rechts, wenn nicht alle Reiter Platz haben
+		const tabsEl = $('#stabs');
+		const arrows = () => {
+			const max = tabsEl.scrollWidth - tabsEl.clientWidth;
+			$('.tabs-arrow.left', main).classList.toggle('show', tabsEl.scrollLeft > 2);
+			$('.tabs-arrow.right', main).classList.toggle('show', tabsEl.scrollLeft < max - 2);
+		};
+		$$('[data-tabs]', main).forEach((b) => (b.onclick = () => tabsEl.scrollBy({ left: +b.dataset.tabs * tabsEl.clientWidth * 0.6, behavior: 'smooth' })));
+		tabsEl.addEventListener('scroll', arrows, { passive: true });
+		const onResize = () => { if (!document.body.contains(tabsEl)) return window.removeEventListener('resize', onResize); arrows(); };
+		window.addEventListener('resize', onResize);
+		$('.tabs a.on', tabsEl)?.scrollIntoView({ block: 'nearest', inline: 'center' });
+		requestAnimationFrame(arrows);
 		const smtpData = () => ($('#smtpform', main) ? Object.fromEntries($$('#smtpform [name]', main).map((i) => [i.name, i.value])) : {});
 		$('[data-test]', main)?.addEventListener('click', async (e) => {
 			const b = e.currentTarget; b.disabled = true;

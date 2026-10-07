@@ -291,6 +291,9 @@ function nw_invoice_state( array $r ) {
 	if ( $r['paid_at'] ) {
 		return 'paid';
 	}
+	if ( (float) ( $r['paid_amount'] ?? 0 ) > 0 ) {
+		return 'partial'; // teilweise bezahlt
+	}
 	if ( $r['due_date'] && $r['due_date'] < nw_today() ) {
 		return 'overdue';
 	}
@@ -328,8 +331,10 @@ function nw_invoice_row( array $r ) {
 	$r['paid_amount'] = null === $r['paid_amount'] ? null : (float) $r['paid_amount'];
 	$r['state']       = nw_invoice_state( $r );
 	$r['is_recurring'] = isset( nw_recurring_invoice_ids()[ (int) $r['id'] ] );
-	$r['open']        = in_array( $r['state'], array( 'open', 'overdue' ), true ) ? $r['gross'] : 0.0;
-	$r['days_overdue'] = 'overdue' === $r['state'] ? (int) floor( ( strtotime( nw_today() ) - strtotime( $r['due_date'] ) ) / 86400 ) : 0;
+	$r['paid']        = (float) ( $r['paid_amount'] ?? 0 );
+	$r['open']        = in_array( $r['state'], array( 'open', 'overdue', 'partial' ), true ) ? round( $r['gross'] - $r['paid'], 2 ) : 0.0;
+	$late             = in_array( $r['state'], array( 'overdue', 'partial' ), true ) && $r['due_date'] && $r['due_date'] < nw_today();
+	$r['days_overdue'] = $late ? (int) floor( ( strtotime( nw_today() ) - strtotime( $r['due_date'] ) ) / 86400 ) : 0;
 	return $r;
 }
 
@@ -354,6 +359,7 @@ function nw_invoice_get( $id ) {
 	$r['converted'] = ! empty( $r['converted_id'] ) ? q_row( 'SELECT id, number, status FROM invoices WHERE id = ?', array( $r['converted_id'] ) ) : null;
 	$r['from_offer'] = q_row( "SELECT id, number FROM invoices WHERE kind = 'offer' AND converted_id = ?", array( $r['id'] ) );
 	$r['customer'] = $r['customer_id'] ? q_row( 'SELECT id, number, company, person, email, email_cc FROM customers WHERE id = ?', array( $r['customer_id'] ) ) : null;
+	$r['payments'] = q_all( 'SELECT id, date, amount, note FROM payments WHERE invoice_id = ? ORDER BY date, id', array( $r['id'] ) );
 	$r['mails']    = q_all( 'SELECT kind, to_addr, subject, ok, error, created_at FROM mail_log WHERE invoice_id = ? ORDER BY id DESC', array( $r['id'] ) );
 	$r['activity'] = q_all( 'SELECT text, created_at FROM activity WHERE invoice_id = ? ORDER BY id DESC LIMIT 30', array( $r['id'] ) );
 	return $r;
@@ -549,22 +555,54 @@ function nw_invoice_issue( $id ) {
 	return nw_invoice_get( $id );
 }
 
-/** Zahlungseingang abhaken. */
-function nw_invoice_pay( $id, $date = null, $amount = null ) {
+/** Zahlungseingang erfassen – voller Restbetrag (Standard) oder Teilzahlung. */
+function nw_invoice_pay( $id, $date = null, $amount = null, $note = '' ) {
 	$inv = nw_invoice_get( $id );
 	if ( 'issued' !== $inv['status'] || 'invoice' !== $inv['kind'] ) {
 		nw_fail( 'Nur ausgestellte Rechnungen können als bezahlt markiert werden.' );
 	}
-	$date = preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $date ) ? $date : nw_today();
-	nw_update( 'invoices', $id, array( 'paid_at' => $date, 'paid_amount' => null === $amount || '' === $amount ? $inv['gross'] : round( (float) $amount, 2 ), 'updated_at' => nw_now() ) );
-	nw_log( 'Zahlungseingang am ' . nw_date( $date ) . ' abgehakt', $id, $inv['customer_id'] );
+	if ( 'paid' === $inv['state'] ) {
+		nw_fail( 'Die Rechnung ist bereits vollständig bezahlt.' );
+	}
+	$date   = preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $date ) ? $date : nw_today();
+	$amount = null === $amount || '' === $amount ? $inv['open'] : round( (float) $amount, 2 );
+	if ( $amount <= 0 ) {
+		nw_fail( 'Bitte einen Betrag größer als 0 angeben.' );
+	}
+	nw_insert( 'payments', array( 'invoice_id' => $inv['id'], 'date' => $date, 'amount' => $amount, 'note' => (string) $note, 'created_at' => nw_now() ) );
+	$after = nw_payments_sync( $inv['id'] );
+	nw_log(
+		$after['paid_at']
+			? 'Zahlung ' . nw_money( $amount ) . ' am ' . nw_date( $date ) . ' – vollständig bezahlt'
+			: 'Teilzahlung ' . nw_money( $amount ) . ' am ' . nw_date( $date ) . ' – offen ' . nw_money( $inv['gross'] - $after['sum'] ),
+		$inv['id'],
+		$inv['customer_id']
+	);
 	return nw_invoice_get( $id );
 }
 
-function nw_invoice_unpay( $id ) {
+/** Summe der Zahlungen auf die Rechnung schreiben: vollständig → paid_at = letzte Zahlung. */
+function nw_payments_sync( $id ) {
+	$inv  = q_row( 'SELECT gross FROM invoices WHERE id = ?', array( (int) $id ) );
+	$sum  = round( (float) q_val( 'SELECT COALESCE(SUM(amount),0) FROM payments WHERE invoice_id = ?', array( (int) $id ) ), 2 );
+	$last = q_val( 'SELECT MAX(date) FROM payments WHERE invoice_id = ?', array( (int) $id ) );
+	$full = $sum > 0 && $sum >= round( (float) $inv['gross'], 2 ) - 0.005;
+	nw_update( 'invoices', (int) $id, array( 'paid_at' => $full ? $last : null, 'paid_amount' => $sum > 0 ? $sum : null, 'updated_at' => nw_now() ) );
+	return array( 'sum' => $sum, 'paid_at' => $full ? $last : null );
+}
+
+/** Eine Zahlung löschen (Standard: die letzte). */
+function nw_invoice_unpay( $id, $payment_id = null ) {
 	$inv = nw_invoice_get( $id );
-	nw_update( 'invoices', $id, array( 'paid_at' => null, 'paid_amount' => null, 'updated_at' => nw_now() ) );
-	nw_log( 'Zahlungseingang zurückgenommen', $id, $inv['customer_id'] );
+	$pid = $payment_id ? (int) $payment_id : (int) q_val( 'SELECT id FROM payments WHERE invoice_id = ? ORDER BY date DESC, id DESC LIMIT 1', array( $inv['id'] ) );
+	$p   = q_row( 'SELECT * FROM payments WHERE id = ? AND invoice_id = ?', array( $pid, $inv['id'] ) );
+	if ( $p ) {
+		q( 'DELETE FROM payments WHERE id = ?', array( $pid ) );
+		nw_log( 'Zahlung ' . nw_money( $p['amount'] ) . ' vom ' . nw_date( $p['date'] ) . ' zurückgenommen', $inv['id'], $inv['customer_id'] );
+	} else {
+		nw_update( 'invoices', $inv['id'], array( 'paid_at' => null, 'paid_amount' => null ) );
+	}
+	nw_payments_sync( $inv['id'] );
 	return nw_invoice_get( $id );
 }
 
@@ -944,10 +982,10 @@ function nw_dashboard() {
 	$open = array_values(
 		array_filter(
 			array_map( 'nw_invoice_row', q_all( "SELECT * FROM invoices WHERE status = 'issued' AND kind = 'invoice' AND paid_at IS NULL ORDER BY due_date" ) ),
-			function ( $r ) { return in_array( $r['state'], array( 'open', 'overdue' ), true ); }
+			function ( $r ) { return in_array( $r['state'], array( 'open', 'overdue', 'partial' ), true ); }
 		)
 	);
-	$overdue = array_values( array_filter( $open, function ( $r ) { return 'overdue' === $r['state']; } ) );
+	$overdue = array_values( array_filter( $open, function ( $r ) { return $r['days_overdue'] > 0; } ) );
 	$years   = q_all( "SELECT substr(invoice_date,1,4) AS y, ROUND(SUM(gross),2) AS revenue, COUNT(CASE WHEN kind = 'invoice' THEN 1 END) AS n FROM invoices WHERE status != 'draft' AND kind != 'offer' GROUP BY y ORDER BY y" );
 	$exp     = (float) q_val( 'SELECT COALESCE(SUM(amount),0) FROM expenses WHERE substr(date,1,4) = ?', array( (string) $year ) );
 	$rec     = nw_recurring_list();
@@ -968,10 +1006,10 @@ function nw_dashboard() {
 		'months'        => $months( $year ),
 		'months_prev'   => $months( $year - 1 ),
 		'years'         => $years,
-		'open_sum'      => round( array_sum( array_column( $open, 'gross' ) ), 2 ),
+		'open_sum'      => round( array_sum( array_column( $open, 'open' ) ), 2 ),
 		'open'          => array_slice( $open, 0, 8 ),
 		'open_count'    => count( $open ),
-		'overdue_sum'   => round( array_sum( array_column( $overdue, 'gross' ) ), 2 ),
+		'overdue_sum'   => round( array_sum( array_column( $overdue, 'open' ) ), 2 ),
 		'overdue_count' => count( $overdue ),
 		'drafts'        => array_map( 'nw_invoice_row', q_all( "SELECT * FROM invoices WHERE status = 'draft' ORDER BY updated_at DESC LIMIT 6" ) ),
 		'offers_open'   => array_values(

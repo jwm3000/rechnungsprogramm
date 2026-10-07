@@ -259,7 +259,7 @@ class NW_Document {
 		// Genau rechnen, ob Summen, Zahlungsbedingung und ggf. Stempel noch auf die Seite passen.
 		$stamped = in_array( $inv['state'], array( 'paid', 'cancelled', 'accepted', 'declined' ), true );
 		$right   = ( $small ? 0 : 16 * ( 1 + count( $inv['taxes'] ) ) ) + 36;
-		$left    = 28 + ( $stamped ? 46 : 0 );
+		$left    = 28 + ( $stamped ? 46 : 0 ) + ( 'partial' === $inv['state'] ? 34 : 0 );
 		if ( $y + 30 * $k + max( $right, $left ) + 14 > 752 ) {
 			$pdf->add_page();
 			self::page_frame( $pdf, $s, $accent );
@@ -306,7 +306,11 @@ class NW_Document {
 		}
 
 		$state = $inv['state'];
-		if ( 'accepted' === $state ) {
+		if ( 'partial' === $state ) {
+			$pdf->text( $L, $ly + 8, 'Bereits bezahlt: ' . nw_money( $inv['paid'] ), 9.5, false, self::$muted );
+			$pdf->text( $L, $ly + 22, 'Offen: ' . nw_money( $inv['open'] ), 10.5, true, self::$ink );
+			$ly += 34;
+		} elseif ( 'accepted' === $state ) {
 			self::stamp( $pdf, $L, $ly + 8, 'ANGENOMMEN', 'vielen Dank für Ihren Auftrag!', '#1a7f4b', '#e7f5ec' );
 			$ly += 46;
 		} elseif ( 'declined' === $state ) {
@@ -378,7 +382,8 @@ class NW_Document {
 		$cy     = $by + $h / 2;
 		$pdf->text( $x1, $cy - 14, 'BITTE ÜBERWEISEN', 7.5, true, $accent );
 		$pdf->text( $x1, $cy + 9, nw_money( $amount ), 17, true, self::$ink );
-		$pdf->text( $x1, $cy + 24, $inv['payment_days'] > 0 ? 'bis ' . nw_date( $inv['due_date'] ) : 'sofort, ohne Abzug', 8.5, false, self::$muted );
+		$sub = $inv['payment_days'] > 0 ? 'bis ' . nw_date( $inv['due_date'] ) : 'sofort, ohne Abzug';
+		$pdf->text( $x1, $cy + 24, ( ! $draft && $inv['paid'] > 0 ? 'Restbetrag · ' : '' ) . $sub, 8.5, false, self::$muted );
 
 		$c2 = $L + 146;
 		$pdf->line( $c2 - 14, $by + 16, $c2 - 14, $by + $h - 16, self::$line, 0.8 );

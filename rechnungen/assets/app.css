@@ -390,6 +390,7 @@ a.list-item:hover .li-title { color: var(--accent); }
 .b-open { background: var(--accent-soft); color: var(--accent); }
 .b-overdue { background: var(--bad-soft); color: var(--bad); }
 .b-paid { background: var(--ok-soft); color: var(--ok); }
+.b-partial { background: var(--warn-soft); color: var(--warn); }
 .b-sent { background: var(--accent-soft); color: var(--ink); }
 .b-accepted { background: var(--ok-soft); color: var(--ok); }
 .b-declined { background: var(--line-2); color: var(--muted); }
@@ -443,6 +444,10 @@ a.list-item:hover .li-title { color: var(--accent); }
 .check.on { background: var(--ok); border-color: var(--ok); }
 .check.on svg { stroke: #fff; opacity: 1; }
 .check.na { visibility: hidden; }
+.check.half { border-color: var(--warn); background: linear-gradient(90deg, var(--warn) 50%, var(--surface) 50%); }
+.check.half svg { stroke: transparent; }
+.pay-progress { margin: 10px 0 6px; max-width: 360px; }
+.pay-progress .meter { margin-top: 0; }
 .check.pop { animation: pop .35s ease; }
 @keyframes pop { 40% { transform: scale(1.25); } }
 
@@ -598,7 +603,17 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 @keyframes toast { from { transform: translateY(12px); opacity: 0; } }
 
 /* Tabs */
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 20px; overflow-x: auto; scrollbar-width: none; }
+.tabs-wrap { position: relative; margin-bottom: 20px; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth; }
+.tabs-arrow {
+	position: absolute; top: 0; bottom: 1px; width: 44px; border: 0; cursor: pointer; color: var(--ink); z-index: 2;
+	display: none; align-items: center; padding: 0 6px;
+}
+.tabs-arrow.show { display: flex; }
+.tabs-arrow.left { left: 0; justify-content: flex-start; background: linear-gradient(90deg, var(--bg) 55%, transparent); }
+.tabs-arrow.right { right: 0; justify-content: flex-end; background: linear-gradient(270deg, var(--bg) 55%, transparent); }
+.tabs-arrow svg { width: 22px; height: 22px; padding: 3px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); box-sizing: content-box; }
+.tabs-arrow:hover svg { border-color: var(--ink); }
 .tabs::-webkit-scrollbar { display: none; }
 .tabs a { padding: 10px 14px; text-decoration: none; font-weight: 650; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .tabs a.on { color: var(--ink); border-bottom-color: var(--ink); }

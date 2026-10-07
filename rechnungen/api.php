@@ -135,9 +135,9 @@ try {
 			}
 			out( nw_invoice_issue( $id ) );
 		case 'invoice_pay':
-			out( nw_invoice_pay( $id, $in['date'] ?? null, $in['amount'] ?? null ) );
+			out( nw_invoice_pay( $id, $in['date'] ?? null, $in['amount'] ?? null, (string) ( $in['note'] ?? '' ) ) );
 		case 'invoice_unpay':
-			out( nw_invoice_unpay( $id ) );
+			out( nw_invoice_unpay( $id, $in['payment_id'] ?? null ) );
 		case 'invoice_cancel':
 			out( nw_invoice_cancel( $id ) );
 		case 'invoice_duplicate':
@@ -334,19 +334,40 @@ try {
 			}
 			out( array( 'ok' => true ) );
 
+		/* ------------------------------------------------ Software-Update */
+		case 'update_check':
+			try {
+				$r = nw_update_check( ! empty( $_GET['force'] ) );
+			} catch ( Throwable $e ) {
+				$r = array( 'repo' => nw_update_repo(), 'current' => NW_APP, 'error' => $e->getMessage() );
+			}
+			out( $r + array( 'backups' => nw_update_backups(), 'writable' => is_writable( NW_ROOT ) && is_writable( NW_ROOT . '/lib' ) && is_writable( NW_ROOT . '/assets' ) ) );
+		case 'update_install':
+			try {
+				out( nw_update_install() );
+			} catch ( RuntimeException $e ) {
+				out( array( 'error' => $e->getMessage() ), 400 );
+			}
+		case 'update_rollback':
+			try {
+				out( array( 'files' => nw_update_rollback( (string) ( $in['name'] ?? '' ) ) ) );
+			} catch ( RuntimeException $e ) {
+				out( array( 'error' => $e->getMessage() ), 400 );
+			}
+
 		/* ------------------------------------------------ Export / Sicherung */
 		case 'export':
 			$year = preg_replace( '/\D/', '', (string) ( $_GET['year'] ?? '' ) );
 			$rows = array_reverse( nw_invoices_list( $year ? array( 'year' => $year ) : array() ) );
 			$fh   = fopen( 'php://temp', 'w+' );
 			fwrite( $fh, "\xEF\xBB\xBF" );
-			fputcsv( $fh, array( 'Nummer', 'Art', 'Datum', 'Kundennr.', 'Kunde', 'Netto', 'USt.', 'Brutto', 'Status', 'Fällig', 'Bezahlt am' ), ';' );
-			$labels = array( 'draft' => 'Entwurf', 'open' => 'offen', 'overdue' => 'überfällig', 'paid' => 'bezahlt', 'cancelled' => 'storniert', 'storno' => 'Storno' );
+			fputcsv( $fh, array( 'Nummer', 'Art', 'Datum', 'Kundennr.', 'Kunde', 'Netto', 'USt.', 'Brutto', 'Bezahlt', 'Offen', 'Status', 'Fällig', 'Bezahlt am' ), ';' );
+			$labels = array( 'draft' => 'Entwurf', 'open' => 'offen', 'overdue' => 'überfällig', 'partial' => 'teilweise bezahlt', 'paid' => 'bezahlt', 'cancelled' => 'storniert', 'storno' => 'Storno' );
 			foreach ( $rows as $r ) {
 				if ( 'draft' === $r['status'] ) {
 					continue;
 				}
-				fputcsv( $fh, array( $r['number'], 'storno' === $r['kind'] ? 'Stornorechnung' : 'Rechnung', nw_date( $r['invoice_date'] ), $r['recipient']['number'], $r['recipient']['name'], nw_money( $r['net'], false ), nw_money( $r['tax'], false ), nw_money( $r['gross'], false ), $labels[ $r['state'] ], nw_date( $r['due_date'] ), nw_date( $r['paid_at'] ) ), ';' );
+				fputcsv( $fh, array( $r['number'], 'storno' === $r['kind'] ? 'Stornorechnung' : 'Rechnung', nw_date( $r['invoice_date'] ), $r['recipient']['number'], $r['recipient']['name'], nw_money( $r['net'], false ), nw_money( $r['tax'], false ), nw_money( $r['gross'], false ), nw_money( $r['paid'], false ), nw_money( $r['open'], false ), $labels[ $r['state'] ], nw_date( $r['due_date'] ), nw_date( $r['paid_at'] ) ), ';' );
 			}
 			rewind( $fh );
 			send_file( stream_get_contents( $fh ), 'Rechnungen' . ( $year ? '-' . $year : '' ) . '.csv', 'text/csv; charset=utf-8', true );

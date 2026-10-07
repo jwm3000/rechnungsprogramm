@@ -172,6 +172,15 @@ function nw_migrate( PDO $pdo ) {
 		// Schrumpfen: auto · on · off
 		$pdo->exec( "ALTER TABLE invoices ADD COLUMN compact TEXT DEFAULT 'auto'; PRAGMA user_version = 3;" );
 	}
+	if ( $v < 4 ) {
+		// Zahlungen einzeln (Teilzahlungen); bisherige Zahlungseingänge übernehmen
+		$pdo->exec(
+			"CREATE TABLE payments (id INTEGER PRIMARY KEY, invoice_id INTEGER REFERENCES invoices(id) ON DELETE CASCADE, date TEXT, amount REAL, note TEXT DEFAULT '', created_at TEXT);
+			CREATE INDEX pay_invoice ON payments(invoice_id);
+			INSERT INTO payments (invoice_id, date, amount, created_at) SELECT id, paid_at, COALESCE(paid_amount, gross), datetime('now') FROM invoices WHERE paid_at IS NOT NULL;
+			PRAGMA user_version = 4;"
+		);
+	}
 }
 
 /* ==================================================================== Einstellungen */

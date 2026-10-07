@@ -59,6 +59,7 @@ Das PDF entsteht direkt in PHP, ganz ohne Bibliothek:
 - Artikel beim Tippen suchen und übernehmen, Rabatt pro Position, Leistungsdatum oder -zeitraum
 - Fortlaufende Nummer erst beim Ausstellen, danach unveränderlich; Korrektur per **Stornorechnung**
 - **Zahlungseingang abhaken** direkt in der Liste – mit „Rückgängig“
+- **Teilzahlungen**: weniger als offen → „teilweise bezahlt“ mit Restbetrag, mehrere Zahlungen je Rechnung; Zahlschein und QR-Code zeigen den Rest
 - Filter (offen, überfällig, bezahlt, Entwürfe, storniert), Jahr, Volltextsuche
 - Per E-Mail senden (PDF im Anhang), Zahlungserinnerung, Teilen am Handy, als neue Rechnung kopieren
 
@@ -144,6 +145,7 @@ Ein anderes Repository (z. B. ein eigener Fork) lässt sich in der `config.php` 
 bin/dev.sh                                         # http://localhost:8090/rechnungen/ (PHP 8.3 über Docker)
 NW_DATA_DIR=/app/demo/data bin/php bin/demo.php    # Demo „Seitei GmbH“ (Passwort demo1234)
 bin/export.sh [--leer]                             # dist/rechnungen.zip – mit oder ohne Daten
+bin/check.sh                                       # Syntax + passt die Oberfläche zur API? (läuft auch vor jedem Release)
 bin/release.sh 1.2.0 "Was ist neu"                 # GitHub-Release für das eingebaute Update
 ```
 
