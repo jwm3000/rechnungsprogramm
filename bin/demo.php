@@ -1,6 +1,6 @@
 <?php
 /**
- * Demo-Datenbestand „Seitei GmbH“ – erfundene Firma, erfundene Kunden, Seitei und Schnapsei.
+ * Demo-Datenbestand „jwm3000 GmbH“ – erfundene Firma, erfundene Kunden, Seitei und Schnapsei.
  * Für Screenshots in der README und zum Ausprobieren.
  *
  *   NW_DATA_DIR=/app/demo/data bin/php bin/demo.php      (Passwort: demo1234)
@@ -19,20 +19,20 @@ if ( (int) q_val( 'SELECT COUNT(*) FROM invoices' ) > 0 ) {
 
 foreach (
 	array(
-		'company'        => 'Seitei GmbH',
+		'company'        => 'jwm3000 GmbH',
 		'tagline'        => 'Getränke & Ausschank seit 1897',
 		'owner'          => 'Gustl Durstberger',
 		'street'         => 'Brauhausgasse 3',
 		'zip'            => '1070',
 		'city'           => 'Wien',
 		'phone'          => '+43 1 234 56 78',
-		'email'          => 'prost@seitei.example',
-		'web'            => 'www.seitei.example',
+		'email'          => 'prost@jwm3000.example',
+		'web'            => 'www.jwm3000.example',
 		'vat_id'         => 'ATU99999999',
 		'bank'           => 'Hopfenbank',
 		'iban'           => 'AT61 1904 3002 3457 3201',
 		'bic'            => 'BKAUATWW',
-		'bank_owner'     => 'Seitei GmbH',
+		'bank_owner'     => 'jwm3000 GmbH',
 		'small_business' => '0',
 		'default_tax'    => '20',
 		'next_number'    => '1001',
@@ -49,7 +49,7 @@ foreach (
 ) {
 	nw_set_setting( $k, $v );
 }
-copy( __DIR__ . '/../docs/seitei-logo.svg', nw_logo_file() );
+copy( __DIR__ . '/../docs/logo.svg', nw_logo_file() );
 
 $c = array();
 foreach (
@@ -118,7 +118,8 @@ nw_invoice_cancel( $bad['id'] );
 q( "UPDATE invoices SET invoice_date = '2026-06-22', issued_at = '2026-06-22 09:00:00' WHERE kind = 'storno'" );
 $make( $c['golf'], '2026-06-22', array( $item( 'seitei', 50 ), $item( 'radler', 25, 0, 'Nachbestellt – es war heiß am Grün' ) ), '2026-07-03' );
 $make( $c['hochz'], '2026-08-15', array( $item( 'kruegerl', 30, 0, 'Polterabend' ), $item( 'runde', 2 ) ), '2026-08-28' );
-$make( $c['ffw'], '2026-09-05', array( $item( 'fass', 5, 5, 'Feuerwehrfest 2026' ), $item( 'zapf', 2 ), $item( 'glas', 4 ), $item( 'liefer' ) ) );
+$ffw = $make( $c['ffw'], '2026-09-05', array( $item( 'fass', 5, 5, 'Feuerwehrfest 2026' ), $item( 'zapf', 2 ), $item( 'glas', 4 ), $item( 'liefer' ) ) );
+nw_invoice_pay( $ffw['id'], '2026-09-20', 500, 'Anzahlung aus der Festkasse' );
 $make( $c['kegel'], '2026-09-26', array( $item( 'seitei', 52, 0, 'Herbstmeisterschaft' ), $item( 'obstler', 24 ) ) );
 $make( $c['hirsch'], '2026-09-30', array( $item( 'stamm' ), $item( 'runde', 1, 0, 'Hias hat Geburtstag' ) ) );
 
@@ -163,4 +164,4 @@ foreach (
 	nw_expense_save( array( 'date' => $e[0], 'vendor' => $e[1], 'description' => $e[2], 'category' => $e[3], 'amount' => $e[4] ) );
 }
 q( "DELETE FROM activity WHERE text LIKE 'Kunde angelegt%' OR text LIKE 'Dauerrechnung angelegt%'" );
-echo "Demo „Seitei GmbH“ angelegt – Passwort demo1234\n";
+echo "Demo „jwm3000 GmbH“ angelegt – Passwort demo1234\n";

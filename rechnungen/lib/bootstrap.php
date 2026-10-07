@@ -344,10 +344,27 @@ function nw_client_ip() {
 	return $_SERVER['REMOTE_ADDR'] ?? '';
 }
 
-/** Max. 8 Fehlversuche je IP in 15 Minuten. */
+/** Max. 8 Fehlversuche je IP und 40 insgesamt (verteilte Angriffe) in 15 Minuten. */
 function nw_login_blocked() {
 	$since = gmdate( 'Y-m-d H:i:s', time() - 900 );
-	return (int) q_val( 'SELECT COUNT(*) FROM logins WHERE ip = ? AND ok = 0 AND created_at > ?', array( nw_client_ip(), $since ) ) >= 8;
+	$ip    = (int) q_val( 'SELECT COUNT(*) FROM logins WHERE ip = ? AND ok = 0 AND created_at > ?', array( nw_client_ip(), $since ) );
+	$all   = (int) q_val( 'SELECT COUNT(*) FROM logins WHERE ok = 0 AND created_at > ?', array( $since ) );
+	return $ip >= 8 || $all >= 40;
+}
+
+/** Einrichtungscode für das erste Passwort (Datei im geschützten Datenordner, per FTP lesbar). */
+function nw_setup_code() {
+	$f = nw_data_dir() . '/SETUP-CODE.txt';
+	if ( ! is_file( $f ) ) {
+		$alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+		$code     = '';
+		for ( $i = 0; $i < 8; $i++ ) {
+			$code .= $alphabet[ random_int( 0, strlen( $alphabet ) - 1 ) ];
+		}
+		file_put_contents( $f, $code . "\n\nEinrichtungscode für das Rechnungsprogramm – beim ersten Aufruf eingeben.\nDie Datei wird danach automatisch gelöscht.\n" );
+		@chmod( $f, 0600 );
+	}
+	return strtoupper( trim( strtok( (string) file_get_contents( $f ), "\n" ) ) );
 }
 
 function nw_login( $password ) {
@@ -433,7 +450,9 @@ function nw_slug( $s ) {
 	$s = strtr( (string) $s, array( 'ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'Ä' => 'Ae', 'Ö' => 'Oe', 'Ü' => 'Ue', 'ß' => 'ss' ) );
 	$t = @iconv( 'UTF-8', 'ASCII//TRANSLIT', $s );
 	$s = false === $t ? $s : $t;
-	return trim( preg_replace( '/[^A-Za-z0-9._-]+/', '-', $s ), '-' );
+	$s = preg_replace( '/[^A-Za-z0-9._-]+/', '-', $s );
+	$s = preg_replace( array( '/\.{2,}/', '/-{2,}/' ), array( '.', '-' ), $s );
+	return trim( $s, '-.' );
 }
 
 function nw_is_email( $s ) {

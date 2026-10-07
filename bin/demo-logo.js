@@ -1,4 +1,5 @@
-// Seitei GmbH – Logo: Bierflasche + Schriftzug, alles als Pfade (für das PDF)
+// Demo-Logo „jwm3000 GmbH“: Bierflasche + Schriftzug, alles als Pfade (für das PDF)
+// Aufruf: node bin/demo-logo.js docs/logo.svg   (braucht opentype.js und die Noto-Schriften)
 const opentype = require('opentype.js');
 const fs = require('fs');
 const serif = opentype.loadSync('/usr/share/fonts/noto/NotoSerif-Black.ttf');
@@ -28,12 +29,12 @@ const bottle = [
 	// Etikett
 	P(`M${bx + 6} ${by + 100} L${bx + 46} ${by + 100} C${bx + 48} ${by + 100} ${bx + 48} ${by + 102} ${bx + 48} ${by + 104} L${bx + 48} ${by + 136} C${bx + 48} ${by + 138} ${bx + 46} ${by + 140} ${bx + 44} ${by + 140} L${bx + 8} ${by + 140} C${bx + 6} ${by + 140} ${bx + 4} ${by + 138} ${bx + 4} ${by + 136} L${bx + 4} ${by + 104} C${bx + 4} ${by + 102} ${bx + 4} ${by + 100} ${bx + 6} ${by + 100} Z`, C.label),
 ];
-const s = text(serif, 'S', 0, 0, 34);
-const sg = serif.charToGlyph('S').getBoundingBox();
+const s = text(serif, 'J', 0, 0, 34);
+const sg = serif.charToGlyph('J').getBoundingBox();
 const sw = (sg.x2 - sg.x1) / serif.unitsPerEm * 34;
-bottle.push(P(text(serif, 'S', bx + 26 - sw / 2 - sg.x1 / serif.unitsPerEm * 34, by + 132, 34).d, C.glass));
+bottle.push(P(text(serif, 'J', bx + 26 - sw / 2 - sg.x1 / serif.unitsPerEm * 34, by + 132, 34).d, C.glass));
 // Schriftzug
-const word = text(serif, 'Seitei', 72, 104, 112, -1);
+const word = text(serif, 'jwm3000', 72, 104, 104, -1);
 const gmbh = text(sans, 'GMBH', 76, 150, 34, 5);
 const rule = P(`M${76 + gmbh.w + 16} 137 L${72 + word.w} 137 L${72 + word.w} 140 L${76 + gmbh.w + 16} 140 Z`, C.amber);
 const W = Math.ceil(72 + word.w + 4), H = 162;

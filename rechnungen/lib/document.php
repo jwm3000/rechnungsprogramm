@@ -359,12 +359,26 @@ class NW_Document {
 		if ( 'off' !== $mode && ! $storno && ! $offer && $due && '' !== trim( $s['iban'] ) ) {
 			$epc = 'qr' === $mode && ! $draft ? self::epc( $inv, $s ) : null;
 			$m   = $epc ? NW_QR::matrix( $epc ) : null;
-			$h   = $m ? ( $k < 1 ? 104 : 124 ) : ( $k < 1 ? 80 : 92 );
-			$by  = 744 - $h;
-			if ( $y + 8 > $by ) {
+			// Höhe: normal, kompakt (Schrumpfen) und in der stärksten Stufe schlank (QR ohne Beschriftung)
+			$hs = $m ? ( $k < 1 ? array( 104 ) : array( 124 ) ) : ( $k < 1 ? array( 80 ) : array( 92 ) );
+			if ( $m && $k <= 0.7 ) {
+				$hs[] = 86;
+			}
+			$h = null;
+			foreach ( $hs as $cand ) {
+				if ( $y + 8 <= 744 - $cand ) {
+					$h = $cand;
+					break;
+				}
+			}
+			if ( null === $h ) {
+				$h = $hs[0];
 				$pdf->add_page();
 				self::page_frame( $pdf, $s, $accent );
+				self::$totals_alone = true; // nur der Zahlschein auf der neuen Seite – unschön
 				$by = 70;
+			} else {
+				$by = 744 - $h;
 			}
 			self::pay_box( $pdf, $by, $h, $inv, $s, $accent, $m, $draft );
 		}
@@ -407,12 +421,16 @@ class NW_Document {
 			$pw = 120;
 			$cx = $R - $pw / 2;
 			$pdf->line( $R - $pw, $by + 16, $R - $pw, $by + $h - 16, self::$line, 0.8 );
-			$qs   = $h < 110 ? 58 : 72;
+			$slim = $h < 95; // schlank: QR mittig, ohne Beschriftung darunter
+			$qs   = $slim ? $h - 26 : ( $h < 110 ? 58 : 72 );
 			$card = $qs + 10;
-			$pdf->rrect( $cx - $card / 2, $by + 11, $card, $card, 5, '#ffffff', self::$line, 0.6 );
-			$pdf->qr( $cx - $qs / 2, $by + 16, $qs, $m );
-			$pdf->text( $cx, $by + $h - 19, 'ZAHLEN MIT CODE', 7, true, $accent, 'center' );
-			$pdf->text( $cx, $by + $h - 9, 'Banking-App öffnen & scannen', 7, false, self::$muted, 'center' );
+			$top  = $slim ? $by + ( $h - $card ) / 2 : $by + 11;
+			$pdf->rrect( $cx - $card / 2, $top, $card, $card, 5, '#ffffff', self::$line, 0.6 );
+			$pdf->qr( $cx - $qs / 2, $top + 5, $qs, $m );
+			if ( ! $slim ) {
+				$pdf->text( $cx, $by + $h - 19, 'ZAHLEN MIT CODE', 7, true, $accent, 'center' );
+				$pdf->text( $cx, $by + $h - 9, 'Banking-App öffnen & scannen', 7, false, self::$muted, 'center' );
+			}
 		}
 	}
 

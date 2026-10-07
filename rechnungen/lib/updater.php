@@ -21,8 +21,9 @@ function nw_update_repo() {
 function nw_http_get( $url, $accept = 'application/vnd.github+json', $max = 52428800 ) {
 	$token = (string) ( ( (array) nw_config( 'update' ) )['token'] ?? '' );
 	for ( $hop = 0; $hop < 5; $hop++ ) {
-		if ( 0 !== strpos( $url, 'https://' ) ) {
-			throw new RuntimeException( 'Nur HTTPS-Downloads sind erlaubt.' );
+		$host = (string) parse_url( $url, PHP_URL_HOST );
+		if ( 0 !== strpos( $url, 'https://' ) || ! preg_match( '/(^|\.)(github\.com|githubusercontent\.com)$/', $host ) ) {
+			throw new RuntimeException( 'Download nur von GitHub über HTTPS erlaubt (' . $host . ').' );
 		}
 		$headers = array( 'User-Agent: Rechnungsprogramm-Updater', 'Accept: ' . $accept );
 		if ( '' !== $token && 'api.github.com' === parse_url( $url, PHP_URL_HOST ) ) {
@@ -110,7 +111,8 @@ function nw_update_check( $force = false ) {
 		$asset = '';
 		foreach ( (array) ( $rel['assets'] ?? array() ) as $a ) {
 			if ( 'rechnungen.zip' === ( $a['name'] ?? '' ) ) {
-				$asset = $a['url']; // API-URL, funktioniert auch bei privaten Repos
+				$asset  = $a['url']; // API-URL, funktioniert auch bei privaten Repos
+				$digest = (string) ( $a['digest'] ?? '' ); // „sha256:…“, von GitHub berechnet
 			}
 		}
 		$data = array(
@@ -122,6 +124,7 @@ function nw_update_check( $force = false ) {
 			'published' => (string) ( $rel['published_at'] ?? '' ),
 			'url'       => (string) ( $rel['html_url'] ?? '' ),
 			'asset'     => $asset,
+			'digest'    => $digest ?? '',
 			'zipball'   => (string) ( $rel['zipball_url'] ?? '' ),
 		);
 	}
@@ -205,6 +208,10 @@ function nw_update_install() {
 		: nw_http_get( $info['zipball'], 'application/vnd.github+json' );
 	if ( 200 !== $r['code'] ) {
 		throw new RuntimeException( 'Paket konnte nicht geladen werden (HTTP ' . $r['code'] . ').' );
+	}
+	// Prüfsumme gegen die von GitHub gemeldete vergleichen (Schutz vor beschädigten oder veränderten Downloads)
+	if ( $info['asset'] && preg_match( '/^sha256:([0-9a-f]{64})$/', (string) ( $info['digest'] ?? '' ), $dm ) && ! hash_equals( $dm[1], hash( 'sha256', $r['body'] ) ) ) {
+		throw new RuntimeException( 'Prüfsumme des Update-Pakets stimmt nicht – Update abgebrochen, nichts geändert.' );
 	}
 	$entries = nw_unzip( $r['body'] );
 

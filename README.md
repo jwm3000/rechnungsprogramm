@@ -1,23 +1,23 @@
 <p align="center">
-  <img src="docs/seitei-logo.svg" alt="Seitei GmbH" width="340">
+  <img src="docs/logo.svg" alt="jwm3000 GmbH" width="360">
 </p>
 
 <h1 align="center">Rechnungsprogramm</h1>
 
 <p align="center">
   Rechnungen, Angebote und Dauerrechnungen für Selbstständige und kleine Firmen in Österreich.<br>
-  <b>PHP + SQLite, keine Abhängigkeiten, kein Build-Schritt</b> – läuft auf jedem Webhosting<br>
-  und fühlt sich trotzdem an wie eine moderne App, am Desktop wie am Handy.
+  <b>PHP + SQLite · keine Abhängigkeiten · kein Build-Schritt</b> – läuft auf jedem Webhosting<br>
+  und fühlt sich an wie eine moderne App, am Desktop wie am Handy.
 </p>
 
 <p align="center">
-  <a href="../../releases/latest">Neueste Version</a> ·
+  <a href="../../releases/latest"><b>Neueste Version laden</b></a> ·
   <a href="docs/beispiel-rechnung.pdf">Beispielrechnung (PDF)</a> ·
   <a href="docs/beispiel-angebot.pdf">Beispielangebot (PDF)</a>
 </p>
 
-> Die Screenshots zeigen die Demo-Firma **Seitei GmbH** – Getränke & Ausschank seit 1897.
-> Ihre Kundschaft: der Stammtisch „Zum Durstigen Hirschen“, die Feuerwehr Unterdorf und der Kegelclub „Alle Neune“.
+> Die Screenshots zeigen die Demo-Firma **jwm3000 GmbH** – Getränke & Ausschank seit 1897.
+> Ihre Kundschaft: der Stammtisch „Zum Durstigen Hirschen“, die Feuerwehr Unterdorf, der Kegelclub „Alle Neune“.
 > Verrechnet werden Seitei, Krügerl und Schnapsei. Alle Namen und Daten sind erfunden.
 
 ![Übersicht](docs/uebersicht.png)
@@ -37,76 +37,72 @@
 </tr>
 </table>
 
-## Beispielrechnung und -angebot
+## Rechnung und Angebot als PDF
 
 <p>
   <a href="docs/beispiel-rechnung.pdf"><img src="docs/beispiel-rechnung.png" alt="Beispielrechnung" width="49%"></a>
   <a href="docs/beispiel-angebot.pdf"><img src="docs/beispiel-angebot.png" alt="Beispielangebot" width="49%"></a>
 </p>
 
-Das PDF entsteht direkt in PHP, ganz ohne Bibliothek:
+Das PDF entsteht direkt in PHP, ohne Bibliothek:
 
-- eigenes **Logo** als SVG (Vektor, gestochen scharf), PNG (auch transparent) oder JPG
+- eigenes **Logo** als SVG (Vektor), PNG (auch transparent) oder JPG
 - Zahlschein mit **SEPA-QR-Code** – Banking-App öffnen, scannen, fertig
 - USt.-Ausweis je Steuersatz oder Kleinunternehmer-Hinweis
-- Stempel „Bezahlt“, „Storniert“, „Angenommen“, „Abgelehnt“
-- **Automatisches Schrumpfen**: Würde nur die Summe oder der Stempel auf einer neuen Seite landen, rücken die Positionszeilen zusammen, damit alles auf eine Seite passt
+- Teilzahlungen („bereits bezahlt / offen“) und Stempel „Bezahlt“, „Storniert“, „Angenommen“, „Abgelehnt“
+- **Automatisches Schrumpfen**: Würde nur die Summe, der Stempel oder der Zahlschein allein auf einer neuen Seite landen, rücken die Positionszeilen zusammen
 
 ## Funktionen
 
 **Rechnungen**
 - Editor mit **Live-PDF-Vorschau** beim Tippen
-- Artikel beim Tippen suchen und übernehmen, Rabatt pro Position, Leistungsdatum oder -zeitraum
+- Artikel beim Tippen übernehmen, Rabatt pro Position, Leistungsdatum oder -zeitraum
 - Fortlaufende Nummer erst beim Ausstellen, danach unveränderlich; Korrektur per **Stornorechnung**
 - **Zahlungseingang abhaken** direkt in der Liste – mit „Rückgängig“
-- **Teilzahlungen**: weniger als offen → „teilweise bezahlt“ mit Restbetrag, mehrere Zahlungen je Rechnung; Zahlschein und QR-Code zeigen den Rest
-- Filter (offen, überfällig, bezahlt, Entwürfe, storniert), Jahr, Volltextsuche
-- Per E-Mail senden (PDF im Anhang), Zahlungserinnerung, Teilen am Handy, als neue Rechnung kopieren
+- **Teilzahlungen**: weniger als offen → „teilweise bezahlt“, mehrere Zahlungen je Rechnung
+- Per E-Mail senden (PDF im Anhang), Zahlungserinnerung, Teilen am Handy, Kopieren
 
 **Angebote**
-- Gleicher Editor wie bei Rechnungen, eigener Nummernkreis (`A-1001` …) und „gültig bis“
+- Gleicher Editor, eigener Nummernkreis (`A-1001` …), „gültig bis“
 - Status offen, angenommen, abgelehnt, abgelaufen
-- **Mit einem Klick in eine Rechnung umwandeln** – Positionen und Kunde werden übernommen
+- **Mit einem Klick in eine Rechnung umwandeln**
 
 **Dauerrechnungen**
 - Übersicht, wer regelmäßig eine Rechnung bekommt – mit Jahresleiste der nächsten 12 Monate
-- monatlich bis alle 3 Jahre; Platzhalter wie `{MONAT}`, `{JAHR}` oder `{ZEITRAUM}` in Positionstexten
-- pro Kunde wählbar: **automatisch senden**, nur ausstellen oder als Entwurf zur Prüfung
+- monatlich bis alle 3 Jahre; Platzhalter `{MONAT}`, `{JAHR}`, `{ZEITRAUM}` in Positionstexten
+- pro Kunde: **automatisch senden**, nur ausstellen oder Entwurf zur Prüfung
 - täglicher Cronjob erstellt und versendet fällige Rechnungen
-- Wiederkehrende Rechnungen und Kunden sind in allen Listen mit einem runden Symbol gekennzeichnet
+- wiederkehrende Rechnungen sind in allen Listen mit einem Symbol gekennzeichnet
 
 **Kunden & Artikel**
-- Kundenstamm mit Umsatz, offenen Beträgen, Angeboten, Verlauf, eigener Zahlungsfrist und E-Mail-Kopie
-- **PLZ ↔ Ort für Österreich**: Postleitzahl tippen schlägt den Ort vor, Ort tippen schlägt die Postleitzahl vor
+- Kundenstamm mit Umsatz, offenen Beträgen, Angeboten, Verlauf, eigener Zahlungsfrist
+- **PLZ ↔ Ort für Österreich**: Postleitzahl tippen schlägt den Ort vor und umgekehrt
 - Artikelkatalog mit Kategorien; wiederkehrende Leistungen markierbar
 
 **Übersicht & Auswertung**
-- **Widgets frei anordnen**: am Griff ziehen (Maus, Finger oder Pfeiltasten), minimieren auf eine Zeile mit dem Wichtigsten – die Anordnung wird gespeichert
-- Umsatz im Jahr mit Vorjahresvergleich, Monatsdiagramm, Umsatz pro Jahr, Top-Kunden
-- offene und überfällige Rechnungen, offene Angebote, nächste Dauerrechnungen
+- **Widgets frei anordnen** (Maus, Finger oder Pfeiltasten) und auf eine Zeile minimieren
+- Umsatz mit Vorjahresvergleich, Monatsdiagramm, offene und überfällige Beträge, Top-Kunden
 - **Kleinunternehmergrenze** im Blick (55.000 €)
-- Ausgaben mit Belegfoto vom Handy, Überschuss je Jahr
-- Export als CSV (Steuerberatung) oder alle Rechnungen als PDF in einer ZIP-Datei
+- Ausgaben mit Belegfoto vom Handy
+- Export als CSV oder alle Rechnungen als PDF in einer ZIP-Datei
 
-**Design**
-- **Sieben Designs** mit Mini-Vorschau: Schlicht, Modern (weiche Ecken, sanfte Schatten) und Farbakzente in Blau, Tannengrün, Bordeaux, Kupfer und Petrol
-- Akzentfarbe auf Wunsch auch auf Rechnungen und Angeboten
-- Helles und dunkles Design pro Gerät
+**Design & Bedienung**
+- **Sieben Designs** mit Mini-Vorschau: Schlicht, Modern und Farbakzente – auf Wunsch auch auf Rechnungen
+- Hell und dunkel, einklappbares Menü, am Handy Menü von links, als App auf dem Home-Bildschirm
+- Suche über alles mit <kbd>Strg</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>, neue Rechnung mit <kbd>N</kbd>
 
 <p><img src="docs/design.png" alt="Designs mit Mini-Vorschau" width="70%"></p>
 
-**Bedienung**
-- Suche über alles mit <kbd>Strg</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>, neue Rechnung mit <kbd>N</kbd>
-- Einklappbares Menü, am Handy Menü von links; als App auf den Home-Bildschirm legbar
+## Sicherheit
 
-**Sicherheit & Betrieb**
-- Anmeldung mit Passwort, Sperre nach Fehlversuchen, CSRF-Schutz, strenge Content-Security-Policy
-- **E-Mail-Zugang direkt in den Einstellungen** – mit Schnellauswahl für Gmail, Microsoft 365, GMX, WEB.DE, iCloud, eigener Antwortadresse, BCC-Kopie und Testmail
-- SMTP nur verschlüsselt mit Zertifikatsprüfung; das Passwort wird verschlüsselt gespeichert, der Schlüssel liegt getrennt von der Datenbank (Sicherungen enthalten es nie im Klartext)
-- Hochgeladene Logos werden bereinigt (nur Formen – keine Skripte, Links oder Texte)
-- Datenordner per `.htaccess` gesperrt (oder außerhalb des Webverzeichnisses)
-- Datenbank-Sicherung per Klick
-- **Eingebautes Software-Update** aus den GitHub-Releases – mit automatischer Sicherung und Zurücksetzen
+- **Ersteinrichtung nur mit Code** aus `data/SETUP-CODE.txt` – niemand kann eine frische Installation übernehmen
+- Passwort-Hash (bcrypt), Sperre nach 8 Fehlversuchen je IP bzw. 40 insgesamt in 15 Minuten
+- Sitzungs-Cookie `HttpOnly`, `SameSite=Strict`, über HTTPS `Secure`; CSRF-Token auf jeder Änderung
+- Strenge **Content-Security-Policy** (keine fremden oder eingebetteten Skripte), Ausgaben durchgehend maskiert
+- SQL nur mit vorbereiteten Abfragen; Uploads nach Inhalt geprüft; Logos werden bereinigt (nur Formen)
+- **SMTP-Passwort verschlüsselt** (AES-256-GCM), Schlüssel getrennt von der Datenbank; Versand nur über TLS mit Zertifikatsprüfung
+- Datenordner per `.htaccess` gesperrt – die App prüft das selbst (Einstellungen → Sicherheit)
+- **Updates** nur von GitHub über HTTPS, Prüfsumme wird kontrolliert, vorher automatische Sicherung
 
 ## Installation
 
@@ -114,27 +110,19 @@ Voraussetzungen: PHP ≥ 8.0 mit `pdo_sqlite`, `mbstring`, `openssl`, `dom` (üb
 
 1. Neuestes [Release](../../releases/latest) laden, `rechnungen.zip` entpacken und den Ordner `rechnungen/` hochladen (z. B. nach `/rechnungen`).
 2. Der Ordner `rechnungen/data/` muss für PHP beschreibbar sein.
-3. Seite aufrufen und ein Passwort festlegen, dann unter **Einstellungen** Firmendaten, Logo und Bankverbindung eintragen.
-4. Unter **Einstellungen → E-Mail** den SMTP-Zugang eintragen und eine Testmail senden
-   (alternativ in der `config.php` – die hat dann Vorrang).
-5. Für Dauerrechnungen einen täglichen Cronjob anlegen: `php /pfad/zu/rechnungen/cron.php`
+3. Seite aufrufen. Den **Einrichtungscode** aus `rechnungen/data/SETUP-CODE.txt` (per FTP öffnen) eingeben und ein Passwort festlegen.
+4. Unter **Einstellungen** Firmendaten, Logo und Bankverbindung eintragen.
+5. Unter **Einstellungen → E-Mail** den SMTP-Zugang eintragen und eine Testmail senden.
+6. Für Dauerrechnungen einen täglichen Cronjob anlegen: `php /pfad/zu/rechnungen/cron.php`
    (oder die URL aus *Einstellungen → E-Mail & Automatik*).
 
-Unter **Einstellungen → Sicherheit** prüft das Programm, ob der Datenordner von außen erreichbar ist.
-Bei nginx greift die `.htaccess` nicht – dann `data_dir` in der `config.php` auf einen Ordner außerhalb des Webverzeichnisses setzen.
-
-### E-Mail-Versand
-
-Am zuverlässigsten über ein eigenes Postfach der Domain (z. B. `rechnung@deine-domain.at`), SMTP Port 465 (`ssl`) oder 587 (`tls`).
-Dann passen SPF/DKIM zur Absenderadresse. Mit `bcc` bekommst du eine Kopie jeder versendeten Rechnung.
+Bei nginx greift die `.htaccess` nicht – dann `data_dir` in einer `config.php` (Vorlage: `config.sample.php`) auf einen Ordner außerhalb des Webverzeichnisses setzen.
 
 ## Updates
 
-*Einstellungen → Update* zeigt neue Versionen aus diesem Repository samt Änderungen an.
-Ein Klick installiert sie – vorher werden Programm und Datenbank nach `data/updates/` gesichert,
-jede Sicherung lässt sich dort wieder einspielen. `data/` und `config.php` werden nie überschrieben.
-
-Ein anderes Repository (z. B. ein eigener Fork) lässt sich in der `config.php` einstellen:
+*Einstellungen → Update* zeigt neue Versionen samt Änderungen. Ein Klick installiert sie –
+vorher werden Programm und Datenbank nach `data/updates/` gesichert, jede Sicherung lässt sich wieder einspielen.
+`data/` und `config.php` werden nie überschrieben. Ein eigener Fork lässt sich in der `config.php` einstellen:
 
 ```php
 'update' => array( 'repo' => 'benutzer/repo', 'token' => '' ), // token nur bei privatem Repo
@@ -144,10 +132,10 @@ Ein anderes Repository (z. B. ein eigener Fork) lässt sich in der `config.php` 
 
 ```bash
 bin/dev.sh                                         # http://localhost:8090/rechnungen/ (PHP 8.3 über Docker)
-NW_DATA_DIR=/app/demo/data bin/php bin/demo.php    # Demo „Seitei GmbH“ (Passwort demo1234)
+NW_DATA_DIR=/app/demo/data bin/php bin/demo.php    # Demo „jwm3000 GmbH“ (Passwort demo1234)
+bin/test.sh                                        # alle Tests: Syntax & API-Abgleich, Fachlogik, Sicherheit (HTTP)
 bin/export.sh [--leer]                             # dist/rechnungen.zip – mit oder ohne Daten
-bin/check.sh                                       # Syntax + passt die Oberfläche zur API? (läuft auch vor jedem Release)
-bin/release.sh 1.2.0 "Was ist neu"                 # GitHub-Release für das eingebaute Update
+bin/release.sh 1.5.0 "Was ist neu"                 # testet, taggt und veröffentlicht ein GitHub-Release
 ```
 
 | Pfad | Inhalt |
@@ -155,14 +143,14 @@ bin/release.sh 1.2.0 "Was ist neu"                 # GitHub-Release für das ein
 | `rechnungen/index.php`, `assets/` | Oberfläche (Vanilla JS, eine Datei, kein Build) |
 | `rechnungen/api.php` | JSON-API |
 | `rechnungen/cron.php` | Dauerrechnungen erstellen und versenden |
-| `rechnungen/lib/` | Datenbank, Fachlogik, PDF, Logo (SVG), QR-Code, SMTP, ZIP, Updater |
+| `rechnungen/lib/` | Datenbank, Fachlogik, PDF, Logo, QR-Code, SMTP, ZIP, Updater |
 | `rechnungen/data/` | Datenbank, Logo, Belege, Sicherungen – **nie im Repository** |
-| `bin/seitei-logo.js` | erzeugt das Demo-Logo (opentype.js, Noto-Schriften) |
+| `bin/test.php`, `bin/test-http.sh` | Tests der Fachlogik und Sicherheitstests |
+| `bin/demo.php`, `bin/demo-logo.js` | Demo-Daten und Demo-Logo |
 | `bin/plz-at.py` | erzeugt `assets/plz-at.json` aus dem GeoNames-Verzeichnis |
 
 ## Quellen
 
-Postleitzahlen Österreich: [GeoNames](https://www.geonames.org/) (CC BY 4.0), aufbereitet mit `bin/plz-at.py`.
-Schrift der Oberfläche: Manrope (SIL Open Font License).
+Postleitzahlen Österreich: [GeoNames](https://www.geonames.org/) (CC BY 4.0). Schrift: Manrope (SIL Open Font License).
 
 <p align="center"><sub>Prost! 🍺</sub></p>

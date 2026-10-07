@@ -806,7 +806,7 @@ function nw_recurring_save( array $d ) {
 	$row = array(
 		'customer_id'     => (int) $c['id'],
 		'title'           => trim( (string) ( $d['title'] ?? '' ) ),
-		'interval_months' => in_array( (int) ( $d['interval_months'] ?? 12 ), array( 1, 2, 3, 6, 12, 24, 36 ), true ) ? (int) $d['interval_months'] : 12,
+		'interval_months' => in_array( (int) ( $d['interval_months'] ?? 12 ), array( 1, 2, 3, 6, 12, 24, 36 ), true ) ? (int) ( $d['interval_months'] ?? 12 ) : 12,
 		'next_date'       => $next,
 		'end_date'        => preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $d['end_date'] ?? '' ) ) ? $d['end_date'] : null,
 		'mode'            => $mode,

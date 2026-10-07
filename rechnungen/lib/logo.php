@@ -18,8 +18,12 @@ function nw_logo_file() {
  *
  * @return array{box:array, shapes:array}|null  box = [minx, miny, maxx, maxy]; shape = [fill|null, ops[]]
  */
-function nw_logo() {
+function nw_logo( $reset = false ) {
 	static $cache = false;
+	if ( $reset ) {
+		$cache = false;
+		return null;
+	}
 	if ( false !== $cache ) {
 		return $cache;
 	}
@@ -385,8 +389,12 @@ function nw_logo_html() {
 }
 
 /** Rasterlogo als PDF-Bild (zwischengespeichert) oder null. */
-function nw_logo_raster_pdf() {
+function nw_logo_raster_pdf( $reset = false ) {
 	static $img = false;
+	if ( $reset ) {
+		$img = false;
+		return null;
+	}
 	if ( false !== $img ) {
 		return $img;
 	}
@@ -581,6 +589,8 @@ function nw_logo_save( $bin ) {
 	}
 	nw_logo_delete();
 	file_put_contents( nw_data_dir() . '/logo.' . $ext, $bin );
+	nw_logo( true );
+	nw_logo_raster_pdf( true );
 	return $ext;
 }
 
@@ -588,4 +598,6 @@ function nw_logo_delete() {
 	foreach ( array( 'logo.svg', 'logo.png', 'logo.jpg', 'logo.cache.json', 'logo.pdfimg' ) as $f ) {
 		@unlink( nw_data_dir() . '/' . $f );
 	}
+	nw_logo( true );
+	nw_logo_raster_pdf( true );
 }

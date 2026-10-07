@@ -8,10 +8,12 @@ require __DIR__ . '/lib/bootstrap.php';
 header( 'X-Content-Type-Options: nosniff' );
 header( 'Referrer-Policy: same-origin' );
 header( 'Cache-Control: no-store' );
+header( 'X-Frame-Options: SAMEORIGIN' );
 
 function out( $data, $code = 200 ) {
 	http_response_code( $code );
 	header( 'Content-Type: application/json; charset=utf-8' );
+	header( "Content-Security-Policy: default-src 'none'; frame-ancestors 'none'" );
 	echo json_encode( $data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE );
 	exit;
 }
@@ -41,19 +43,31 @@ try {
 
 	/* ---------------------------------------------------------------- ohne Anmeldung */
 	if ( 'session' === $a ) {
+		if ( ! nw_has_password() ) {
+			nw_setup_code(); // Datei mit Einrichtungscode anlegen
+		}
 		out( array( 'logged_in' => nw_logged_in(), 'has_password' => nw_has_password(), 'csrf' => $_SESSION['csrf'], 'version' => NW_APP ) );
 	}
-	if ( 'POST' === $method && ( $_SERVER['HTTP_X_CSRF'] ?? '' ) !== $_SESSION['csrf'] ) {
+	if ( 'POST' === $method && ! hash_equals( (string) $_SESSION['csrf'], (string) ( $_SERVER['HTTP_X_CSRF'] ?? '' ) ) ) {
 		out( array( 'error' => 'Sitzung abgelaufen – bitte Seite neu laden.' ), 403 );
 	}
 	if ( 'setup' === $a && 'POST' === $method ) {
 		if ( nw_has_password() ) {
 			out( array( 'error' => 'Bereits eingerichtet.' ), 403 );
 		}
+		// Erstes Passwort nur mit dem Code aus data/SETUP-CODE.txt – sonst könnte jeder eine frische Installation übernehmen
+		if ( nw_login_blocked() ) {
+			out( array( 'error' => 'Zu viele Fehlversuche – bitte in 15 Minuten nochmals probieren.' ), 429 );
+		}
+		if ( ! hash_equals( nw_setup_code(), strtoupper( trim( (string) ( $in['code'] ?? '' ) ) ) ) ) {
+			q( 'INSERT INTO logins (ip, ok, created_at) VALUES (?, 0, ?)', array( nw_client_ip(), gmdate( 'Y-m-d H:i:s' ) ) );
+			out( array( 'error' => 'Einrichtungscode stimmt nicht. Er steht in der Datei data/SETUP-CODE.txt auf dem Server.' ), 403 );
+		}
 		$r = nw_set_password( (string) ( $in['password'] ?? '' ) );
 		if ( true !== $r ) {
 			out( array( 'error' => $r ), 400 );
 		}
+		@unlink( nw_data_dir() . '/SETUP-CODE.txt' );
 		nw_login( (string) $in['password'] );
 		out( array( 'ok' => true ) );
 	}
@@ -233,8 +247,10 @@ try {
 		/* ------------------------------------------------ Einstellungen */
 		case 'settings_save':
 			$allowed = array_keys( nw_settings_defaults() );
+			// interne Werte nie von außen setzbar (Update-Cache, Zeitstempel, Passwort-Felder)
+			$internal = array( 'cron_last', 'update_cache', 'smtp_pass_enc', 'password_hash', 'cron_key' );
 			foreach ( $in as $k => $v ) {
-				if ( in_array( $k, $allowed, true ) && ! in_array( $k, array( 'cron_last', 'smtp_pass_enc' ), true ) && ! is_array( $v ) ) {
+				if ( in_array( $k, $allowed, true ) && ! in_array( $k, $internal, true ) && ! is_array( $v ) ) {
 					nw_set_setting( $k, trim( (string) $v ) );
 				}
 			}
@@ -291,10 +307,8 @@ try {
 				if ( '' !== $cfg['host'] && ! preg_match( '/^[a-z0-9.-]+$/i', $cfg['host'] ) ) {
 					nw_fail( 'Ungültiger Servername.' );
 				}
-				foreach ( array( 'from', 'user' ) as $k ) {
-					if ( '' !== $cfg[ $k ] && 'from' === $k && ! nw_is_email( $cfg[ $k ] ) ) {
-						nw_fail( 'Ungültige Absenderadresse.' );
-					}
+				if ( '' !== $cfg['from'] && ! nw_is_email( $cfg['from'] ) ) {
+					nw_fail( 'Ungültige Absenderadresse.' );
 				}
 				if ( '' !== $cfg['reply_to'] && ! nw_is_email( $cfg['reply_to'] ) ) {
 					nw_fail( 'Ungültige Antwortadresse.' );
@@ -404,6 +418,6 @@ try {
 } catch ( NW_Error $e ) {
 	out( array( 'error' => $e->getMessage() ), 400 );
 } catch ( Throwable $e ) {
-	error_log( 'Rechnungen: ' . $e );
-	out( array( 'error' => 'Serverfehler: ' . $e->getMessage() ), 500 );
+	error_log( 'Rechnungsprogramm: ' . $e );
+	out( array( 'error' => 'Interner Fehler – Details stehen im Server-Log.' ), 500 );
 }

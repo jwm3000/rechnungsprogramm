@@ -2,7 +2,7 @@
 defined( 'NW_APP' ) || exit;
 
 /**
- * Kleiner QR-Code-Generator (Byte-Modus, Fehlerkorrektur M, Version 1–15) mit PNG-Ausgabe ohne GD –
+ * Kleiner QR-Code-Generator (Byte-Modus, Fehlerkorrektur M, Version 1–15) – für Vektor-Ausgabe im PDF –
  * und der EPC-/SEPA-QR-Code („GiroCode“) für Überweisungen nach EPC069-12.
  *
  * Aufbau nach ISO/IEC 18004, Umsetzung angelehnt an Project Nayuki „QR Code generator“ (MIT).
@@ -51,11 +51,6 @@ class NW_QR {
 		return rtrim( implode( "\n", $lines ), "\n" );
 	}
 
-	/** PNG eines EPC-QR-Codes oder null. */
-	public static function epc_png( $name, $iban, $bic, $amount, $text, $scale = 8 ) {
-		$payload = self::epc_payload( $name, $iban, $bic, $amount, $text );
-		return $payload ? self::png( $payload, $scale ) : null;
-	}
 
 	private static function clean( $s, $max ) {
 		$s = trim( preg_replace( '/[\r\n\t]+/', ' ', html_entity_decode( (string) $s, ENT_QUOTES, 'UTF-8' ) ) );
@@ -77,55 +72,9 @@ class NW_QR {
 		return $qr ? array( 'size' => $qr->size, 'modules' => $qr->m ) : null;
 	}
 
-	/** QR-Code als SVG (für die Online-Ansicht): ein einziger Pfad, gestochen scharf. */
-	public static function svg( $text, $quiet = 2 ) {
-		$m = self::matrix( $text );
-		if ( ! $m ) {
-			return '';
-		}
-		$n = $m['size'];
-		$d = '';
-		foreach ( $m['modules'] as $y => $row ) {
-			foreach ( $row as $x => $dark ) {
-				if ( $dark ) {
-					$d .= 'M' . ( $x + $quiet ) . ' ' . ( $y + $quiet ) . 'h1v1h-1z';
-				}
-			}
-		}
-		$v = $n + 2 * $quiet;
-		return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' . $v . ' ' . $v . '" shape-rendering="crispEdges" aria-hidden="true"><rect width="100%" height="100%" fill="#fff"/><path d="' . $d . '" fill="#111"/></svg>';
-	}
 
 	/* ================================================================ PNG */
 
-	/** QR-Code als PNG (Graustufen, 4 Module Ruhezone). */
-	public static function png( $text, $scale = 8 ) {
-		$qr = self::encode( $text );
-		if ( ! $qr ) {
-			return null;
-		}
-		$quiet = 4;
-		$n     = $qr->size;
-		$px    = ( $n + 2 * $quiet ) * $scale;
-		$raw   = '';
-		$white = str_repeat( "\xFF", $px );
-		for ( $y = -$quiet; $y < $n + $quiet; $y++ ) {
-			if ( $y < 0 || $y >= $n ) {
-				$row = $white;
-			} else {
-				$row = str_repeat( "\xFF", $quiet * $scale );
-				for ( $x = 0; $x < $n; $x++ ) {
-					$row .= str_repeat( $qr->m[ $y ][ $x ] ? "\x00" : "\xFF", $scale );
-				}
-				$row .= str_repeat( "\xFF", $quiet * $scale );
-			}
-			$raw .= str_repeat( "\x00" . $row, $scale ); // Filter 0 je Zeile
-		}
-		$chunk = function ( $type, $data ) {
-			return pack( 'N', strlen( $data ) ) . $type . $data . pack( 'N', crc32( $type . $data ) );
-		};
-		return "\x89PNG\r\n\x1a\n" . $chunk( 'IHDR', pack( 'NNCCCCC', $px, $px, 8, 0, 0, 0, 0 ) ) . $chunk( 'IDAT', gzcompress( $raw, 9 ) ) . $chunk( 'IEND', '' );
-	}
 
 	/* ================================================================ QR-Code */
 

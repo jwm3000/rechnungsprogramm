@@ -8,7 +8,7 @@ NOTES="${2:-}"
 cd "$DIR"
 [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Version im Format 1.2.3 angeben"; exit 1; }
 [[ -z "$(git status --porcelain)" ]] || { echo "Erst alle Änderungen committen."; exit 1; }
-bin/check.sh
+bin/test.sh
 echo "$VER" > rechnungen/VERSION
 git add rechnungen/VERSION
 git diff --cached --quiet || git commit -qm "Version $VER"

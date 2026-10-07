@@ -15,7 +15,6 @@
 	const qty = (v) => nfNum.format(+v || 0);
 	const dec = (v) => nf2.format(+v || 0);
 	const date = (iso) => (iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '');
-	const dateShort = (iso) => (iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' : '');
 	const num = (s) => {
 		if (typeof s === 'number') return s;
 		s = String(s ?? '').trim().replace(/\s/g, '');
@@ -32,7 +31,6 @@
 		d = Math.min(d, new Date(y, mo, 0).getDate());
 		return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 	};
-	const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 	const MONTHS = ['Jän', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 	const MONTHS_LONG = ['Jänner', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 	const norm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -855,7 +853,7 @@
 					<td class="m-a"><button class="check ${i.state === 'paid' ? 'on' : i.state === 'partial' ? 'half' : ''} ${['open', 'overdue', 'paid', 'partial'].includes(i.state) ? '' : 'na'}" data-pay="${i.id}" aria-label="Bezahlt umschalten" title="${i.state === 'paid' ? 'Bezahlt am ' + date(i.paid_at) + ' – zum Zurücknehmen klicken' : i.state === 'partial' ? 'Teilweise bezahlt – Restbetrag ' + money(i.open) + ' abhaken' : 'Zahlungseingang abhaken'}">${icon('check')}</button></td>
 					<td class="m-hide mono">${esc(i.number || '—')}</td>
 					<td class="m-b strong"><div>${withRec(esc(i.recipient.name || 'Ohne Empfänger'), i.is_recurring)}</div><div class="sub">${esc(i.item_names || '')}</div></td>
-					<td class="m-c hide-m-not muted nowrap"><span class="show-m mono">${esc(i.number || 'Entwurf')} · </span>${date(i.invoice_date)}</td>
+					<td class="m-c muted nowrap"><span class="show-m mono">${esc(i.number || 'Entwurf')} · </span>${date(i.invoice_date)}</td>
 					<td class="m-e">${badge(i.state, i.days_overdue > 0 ? ' · ' + i.days_overdue + ' T.' : '')}${i.sent_at ? ` <span class="muted" title="Per E-Mail versendet am ${date(i.sent_at)}">${icon('mail')}</span>` : ''}</td>
 					<td class="m-d td-r num strong" style="${i.gross < 0 ? 'color:var(--muted)' : ''}">${money(i.gross)}${i.state === 'partial' ? `<div class="sub" style="font-weight:600">offen ${money(i.open)}</div>` : ''}</td>
 				</tr>`).join('')}</tbody></table>
@@ -1474,7 +1472,7 @@
 				${rows.map((c) => `<tr class="click" data-id="${c.id}" style="${+c.archived ? 'opacity:.55' : ''}">
 					<td class="m-hide mono muted">${esc(c.number)}</td>
 					<td class="m-b m-wide strong"><div style="display:flex;gap:8px;align-items:center">${withRec(esc(c.name), +c.recurring_count, 'Bekommt eine Dauerrechnung')}</div><div class="sub">${esc([c.person, c.email].filter(Boolean).join(' · '))}</div></td>
-					<td class="m-c m-wide muted hide-m-not">${esc(c.city)}</td>
+					<td class="m-c m-wide muted">${esc(c.city)}</td>
 					<td class="m-hide muted">${date(c.last_invoice) || '—'}</td>
 					<td class="m-e td-r num" style="${+c.open_amount ? 'color:var(--accent);font-weight:700' : 'color:var(--faint)'}">${+c.open_amount ? money(c.open_amount) : '—'}</td>
 					<td class="m-d td-r num strong">${money(c.revenue)}</td></tr>`).join('')}</tbody></table>`
@@ -2110,19 +2108,20 @@
 		$('#app').innerHTML = `<div class="auth"><form class="auth-card" id="af">
 			<div class="logo">${LOGO()}</div>
 			<h1>${hasPassword ? 'Anmelden' : 'Willkommen'}</h1>
-			<p>${hasPassword ? 'Rechnungen · bitte Passwort eingeben.' : 'Lege ein Passwort für dein Rechnungsprogramm fest (mindestens 8 Zeichen).'}</p>
+			<p>${hasPassword ? 'Rechnungen · bitte Passwort eingeben.' : 'Zum Einrichten den Code aus der Datei <b>data/SETUP-CODE.txt</b> auf dem Server eingeben (z. B. per FTP öffnen) und ein Passwort festlegen (mindestens 8 Zeichen).'}</p>
+			${hasPassword ? '' : '<label class="field" style="margin-bottom:10px"><span class="sr">Einrichtungscode</span><input type="text" id="code" placeholder="Einrichtungscode" autocomplete="off" autocapitalize="characters" spellcheck="false" class="mono" required></label>'}
 			<label class="field"><span class="sr">Passwort</span><input type="password" id="pw" autocomplete="${hasPassword ? 'current-password' : 'new-password'}" placeholder="Passwort" autofocus required></label>
 			${hasPassword ? '' : '<label class="field" style="margin-top:10px"><span class="sr">Wiederholen</span><input type="password" id="pw2" autocomplete="new-password" placeholder="Passwort wiederholen" required></label>'}
 			<button class="btn primary" type="submit">${hasPassword ? 'Anmelden' : 'Passwort festlegen'}</button>
 			<p id="aerr" style="color:var(--bad);margin:12px 0 0;font-weight:600"></p>
 		</form></div>`;
-		$('#pw').focus();
+		($('#code') || $('#pw')).focus();
 		$('#af').onsubmit = async (e) => {
 			e.preventDefault();
 			const pw = $('#pw').value;
 			if (!hasPassword && pw !== $('#pw2').value) { $('#aerr').textContent = 'Die Passwörter stimmen nicht überein.'; return; }
 			try {
-				await api(hasPassword ? 'login' : 'setup', { password: pw });
+				await api(hasPassword ? 'login' : 'setup', { password: pw, code: $('#code')?.value || '' });
 				boot();
 			} catch (er) { $('#aerr').textContent = er.message; $('#pw').select(); }
 		};
