@@ -1,4 +1,4 @@
-/* Rechnungen · norbertwinter – App (ohne Build-Schritt, ohne Abhängigkeiten) */
+/* Rechnungsprogramm – App (ohne Build-Schritt, ohne Abhängigkeiten) */
 (() => {
 	'use strict';
 

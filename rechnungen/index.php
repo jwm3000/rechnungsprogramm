@@ -25,7 +25,7 @@ $v = function ( $f ) {
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Rechnungen">
-<title>Rechnungen · norbertwinter</title>
+<title>Rechnungen · <?php echo htmlspecialchars( nw_setting( 'company' ) ?: 'Rechnungsprogramm', ENT_QUOTES, 'UTF-8' ); ?></title>
 <link rel="icon" href="<?php echo $v( 'assets/icon.svg' ); ?>" type="image/svg+xml">
 <link rel="apple-touch-icon" href="<?php echo $v( 'assets/icon-180.png' ); ?>">
 <link rel="manifest" href="<?php echo $v( 'assets/manifest.json' ); ?>">
