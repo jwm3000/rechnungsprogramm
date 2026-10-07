@@ -212,6 +212,16 @@ function nw_settings_defaults() {
 		'outro'              => '',
 		'footer_note'        => '',
 		'accent'             => '#16171a',
+		'ui_theme'           => 'schlicht',
+		'ui_accent_pdf'      => '0',
+		'smtp_host'          => '',
+		'smtp_port'          => '465',
+		'smtp_secure'        => 'ssl',
+		'smtp_user'          => '',
+		'smtp_pass_enc'      => '',
+		'smtp_from'          => '',
+		'smtp_from_name'     => '',
+		'smtp_bcc'           => '',
 		'pay_box'            => 'qr',
 		'mail_subject'       => 'Rechnung {NUMMER} – {FIRMA}',
 		'mail_body'          => "{ANREDE}\n\nim Anhang finden Sie die Rechnung {NUMMER} vom {DATUM} über {BETRAG}.\n{ZAHLUNG}\n\nVielen Dank für die gute Zusammenarbeit!\n\nMit freundlichen Grüßen\n{INHABER}",
@@ -220,6 +230,24 @@ function nw_settings_defaults() {
 		'cron_last'          => '',
 		'update_cache'       => '',
 	);
+}
+
+/** Designs der Oberfläche: id => Akzentfarbe. */
+function nw_ui_themes() {
+	return array(
+		'schlicht' => '#16171a',
+		'modern'   => '#4f46e5',
+		'blau'     => '#1f4fd1',
+		'tanne'    => '#1d6b4f',
+		'bordeaux' => '#8e1f2a',
+		'kupfer'   => '#b4531f',
+		'petrol'   => '#0f6b78',
+	);
+}
+
+function nw_ui_theme() {
+	$t = nw_setting( 'ui_theme' );
+	return isset( nw_ui_themes()[ $t ] ) ? $t : 'schlicht';
 }
 
 function nw_settings( $refresh = false ) {
@@ -245,7 +273,7 @@ function nw_set_setting( $key, $value ) {
 
 /** Geheime Werte, die nie an den Browser gehen. */
 function nw_private_settings() {
-	return array( 'password_hash', 'session_secret', 'cron_key' );
+	return array( 'password_hash', 'session_secret', 'cron_key', 'smtp_pass_enc' );
 }
 
 function nw_cron_key() {

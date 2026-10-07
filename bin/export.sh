@@ -14,7 +14,7 @@ if [[ "${1:-}" != "--leer" && -f "$DIR/rechnungen/data/rechnungen.sqlite" ]]; th
 	# Konsistente Kopie der Datenbank (auch wenn der Server gerade läuft) + Dateien
 	sqlite3 "$DIR/rechnungen/data/rechnungen.sqlite" ".backup '$OUT/rechnungen/data/rechnungen.sqlite'"
 	rsync -a "$DIR/rechnungen/data/files/" "$OUT/rechnungen/data/files/"
-	[[ -f "$DIR/rechnungen/data/logo.svg" ]] && cp "$DIR/rechnungen/data/logo.svg" "$OUT/rechnungen/data/"
+	for f in logo.svg logo.png logo.jpg .secret; do [[ -f "$DIR/rechnungen/data/$f" ]] && cp "$DIR/rechnungen/data/$f" "$OUT/rechnungen/data/"; done
 fi
 (cd "$OUT" && zip -qr rechnungen.zip rechnungen)
 echo "Fertig: $OUT/rechnungen.zip ($(du -h "$OUT/rechnungen.zip" | cut -f1))"

@@ -283,6 +283,43 @@
 	];
 
 	function themeIcon() { const t = store.get('theme', 'auto'); return t === 'dark' ? 'moon' : t === 'light' ? 'sun' : 'auto'; }
+	/** Häufige Anbieter – Werte laut deren Anleitungen; bei Unsicherheit beim Anbieter nachsehen. */
+	const SMTP_PRESETS = [
+		{ name: 'Eigene Domain (Webhoster)', host: null, port: 465, secure: 'ssl', hint: 'Server, Benutzer und Passwort stehen in der Postfach-Verwaltung deines Webhosters (meist mail.deine-domain.at oder smtp.anbieter.at, Port 465 mit SSL oder 587 mit STARTTLS).' },
+		{ name: 'Gmail', host: 'smtp.gmail.com', port: 465, secure: 'ssl', hint: 'Gmail braucht die Zwei-Faktor-Anmeldung und ein „App-Passwort“ (Google-Konto → Sicherheit → App-Passwörter). Das normale Passwort funktioniert nicht.' },
+		{ name: 'Microsoft 365 / Outlook', host: 'smtp.office365.com', port: 587, secure: 'tls', hint: 'Benutzer = deine E-Mail-Adresse. SMTP-Authentifizierung muss im Postfach erlaubt sein; bei Zwei-Faktor-Anmeldung ein App-Kennwort verwenden.' },
+		{ name: 'GMX', host: 'mail.gmx.net', port: 465, secure: 'ssl', hint: 'In den GMX-Einstellungen „POP3/IMAP Abruf“ bzw. den SMTP-Versand über externe Programme erlauben.' },
+		{ name: 'WEB.DE', host: 'smtp.web.de', port: 587, secure: 'tls', hint: 'In den WEB.DE-Einstellungen den Zugriff über externe Programme (POP3/IMAP) erlauben.' },
+		{ name: 'iCloud', host: 'smtp.mail.me.com', port: 587, secure: 'tls', hint: 'Benutzer = iCloud-Adresse, Passwort = app-spezifisches Passwort (appleid.apple.com → Anmeldung und Sicherheit).' },
+	];
+
+	const UI_THEMES = [
+		{ id: 'schlicht', name: 'Schlicht', color: '#16171a', desc: 'Schwarz-weiß, ruhig und zeitlos' },
+		{ id: 'modern', name: 'Modern', color: '#4f46e5', desc: 'Weiche Ecken, sanfte Schatten, Indigo', modern: true },
+		{ id: 'blau', name: 'Blau', color: '#1f4fd1', desc: 'Klar und freundlich' },
+		{ id: 'tanne', name: 'Tannengrün', color: '#1d6b4f', desc: 'Ruhig, naturnah' },
+		{ id: 'bordeaux', name: 'Bordeaux', color: '#8e1f2a', desc: 'Warm, klassisch' },
+		{ id: 'kupfer', name: 'Kupfer', color: '#b4531f', desc: 'Kräftig, handwerklich' },
+		{ id: 'petrol', name: 'Petrol', color: '#0f6b78', desc: 'Kühl, technisch' },
+	];
+	/** Design der Oberfläche anwenden (Attribut + Grundfarbe; alles Weitere macht das CSS). */
+	function applyUi(id) {
+		const t = UI_THEMES.find((x) => x.id === id) || UI_THEMES[0];
+		document.documentElement.dataset.ui = t.id;
+		document.documentElement.style.setProperty('--accent-base', t.color);
+	}
+	const miniPreview = (t) => {
+		const soft = t.id === 'schlicht' ? '#eaecef' : `color-mix(in srgb, ${t.color} 12%, #fff)`;
+		const r = t.modern ? '9px' : '3px';
+		const bg = t.modern ? '#f3f3f9' : '#eef0f3';
+		return `<div class="mini" style="background:${bg};border-radius:${t.modern ? '10px' : '6px'}">
+			<div class="mini-side"><b></b><span class="on" style="background:${soft};border-left:2px solid ${t.color}"></span><span></span><span></span><span></span></div>
+			<div class="mini-main"><div class="mh"><b></b><em style="background:${t.modern ? `linear-gradient(135deg, ${t.color}, color-mix(in srgb, ${t.color} 60%, #c026d3))` : t.color};border-radius:${r}"></em></div>
+				<div class="mc" style="border-radius:${r};${t.modern ? 'box-shadow:0 3px 10px rgba(30,27,75,.08)' : 'border:1px solid #d9dce1'}"><i style="height:40%;background:#b5bac3"></i><i style="height:75%;background:${t.color}"></i><i style="height:55%;background:#b5bac3"></i><i style="height:95%;background:${t.color}"></i><i style="height:30%;background:#b5bac3"></i><i style="height:65%;background:${t.color}"></i></div>
+				<div class="mb"><s style="background:${soft}"></s><s style="background:#e6f4ec"></s><s style="background:${soft}"></s></div></div>
+		</div>`;
+	};
+
 	function applyTheme() {
 		const t = store.get('theme', 'auto');
 		if (t === 'auto') document.documentElement.removeAttribute('data-theme');
@@ -309,13 +346,14 @@
 				</div>
 				<a class="btn primary new" href="#/rechnung/neu" title="Neue Rechnung">${icon('plus')}<span class="lbl">Neue Rechnung</span></a>
 				<nav class="nav">${NAV.map(([h, i, l]) => `<a href="${h}" data-nav="${h}" title="${l}">${icon(i)}<span class="lbl">${l}</span><span class="count" data-count="${h}"></span></a>`).join('')}
-					<div class="nav-sep"></div>
-					<a href="#/einstellungen" data-nav="#/einstellungen" title="Einstellungen">${icon('cog')}<span class="lbl">Einstellungen</span></a>
 				</nav>
 				<div class="side-foot">
 					<button type="button" class="side-link" data-palette title="Suchen">${icon('search')}<span class="lbl">Suchen</span><span class="lbl keys"><kbd>${mac ? '⌘' : 'Strg'}</kbd><kbd>K</kbd></span></button>
-					<button type="button" class="side-link" data-theme-btn="label" title="Design umschalten">${icon(themeIcon())}<span class="lbl">Design: ${{ auto: 'Automatisch', light: 'Hell', dark: 'Dunkel' }[store.get('theme', 'auto')]}</span></button>
-					<button type="button" class="side-link" data-logout title="Abmelden">${icon('logout')}<span class="lbl">Abmelden</span></button>
+					<a class="side-link" href="#/einstellungen" data-nav="#/einstellungen" title="Einstellungen">${icon('cog')}<span class="lbl">Einstellungen</span></a>
+					<div class="side-row">
+						<button type="button" class="side-link" data-logout title="Abmelden">${icon('logout')}<span class="lbl">Abmelden</span></button>
+						<button type="button" class="side-icon" data-theme-btn title="Hell / Dunkel / Automatisch" aria-label="Hell oder dunkel umschalten">${icon(themeIcon())}</button>
+					</div>
 					<a class="side-version lbl" href="#/einstellungen/update" title="Version und Updates">Version ${esc(S.version || '')}</a>
 				</div>
 			</aside>
@@ -1627,7 +1665,7 @@
 	function viewMore() {
 		$('#main').innerHTML = `<div class="page">${pageHead('Mehr')}
 			<div class="card"><div class="card-body"><div class="list">
-				${[['#/angebote', 'offer', 'Angebote', (S.offers || []).filter((o) => o.state === 'sent').length + ' offen'], ['#/dauerrechnungen', 'repeat', 'Dauerrechnungen', S.recurring.filter((r) => +r.active).length + ' aktiv'], ['#/artikel', 'box', 'Artikel', S.products.filter((p) => !+p.archived).length + ' Leistungen'], ['#/ausgaben', 'wallet', 'Ausgaben', 'Belege erfassen'], ['#/einstellungen', 'cog', 'Einstellungen', 'Firma, Texte, E-Mail, Sicherung']]
+				${[['#/angebote', 'offer', 'Angebote', (S.offers || []).filter((o) => o.state === 'sent').length + ' offen'], ['#/dauerrechnungen', 'repeat', 'Dauerrechnungen', S.recurring.filter((r) => +r.active).length + ' aktiv'], ['#/artikel', 'box', 'Artikel', S.products.filter((p) => !+p.archived).length + ' Leistungen'], ['#/ausgaben', 'wallet', 'Ausgaben', 'Belege erfassen'], ['#/einstellungen/design', 'auto', 'Design', 'Farben und Stil der App'], ['#/einstellungen', 'cog', 'Einstellungen', 'Firma, Texte, E-Mail, Sicherung']]
 					.map(([h, i, l, s]) => `<a class="list-item" href="${h}">${icon(i)}<div class="li-main"><div class="li-title">${l}</div><div class="li-sub">${s}</div></div>${icon('right')}</a>`).join('')}
 				<a class="list-item" href="#/mehr" data-theme-btn="label">${icon(themeIcon())}<span>Design: ${{ auto: 'Automatisch', light: 'Hell', dark: 'Dunkel' }[store.get('theme', 'auto')]}</span></a>
 				<a class="list-item" href="#/mehr" data-logout2>${icon('logout')}<div class="li-main"><div class="li-title">Abmelden</div></div></a>
@@ -1641,14 +1679,14 @@
 	async function viewSettings(tab) {
 		const main = $('#main');
 		const s = S.settings;
-		const tabs = [['firma', 'Firma'], ['bank', 'Bank & Zahlung'], ['texte', 'Rechnungstexte'], ['mail', 'E-Mail & Automatik'], ['nummern', 'Nummern & Steuer'], ['sicherheit', 'Sicherheit'], ['daten', 'Daten'], ['update', 'Update']];
+		const tabs = [['firma', 'Firma'], ['design', 'Design'], ['bank', 'Bank & Zahlung'], ['texte', 'Rechnungstexte'], ['mail', 'E-Mail & Automatik'], ['nummern', 'Nummern & Steuer'], ['sicherheit', 'Sicherheit'], ['daten', 'Daten'], ['update', 'Update']];
 		const f = (k, label, opts = {}) => `<label class="field ${opts.c || 'c3'}"><span>${label}${opts.small ? ` <small>${opts.small}</small>` : ''}</span>${opts.area ? `<textarea name="${k}" rows="${opts.rows || 3}">${esc(s[k])}</textarea>` : `<input type="${opts.type || 'text'}" name="${k}" value="${esc(s[k])}" ${opts.attr || ''}>`}</label>`;
 		const base = new URL('.', location.href).href;
 		const body = {
 			firma: `<div class="logo-edit">
 					<div class="logo-preview" id="logoprev">${LOGO()}</div>
-					<div class="btns"><label class="btn">${icon('download')} Logo hochladen (SVG)<input type="file" id="logofile" accept=".svg,image/svg+xml" hidden></label>${($('#logo-svg')?.textContent || '').trim() ? `<button type="button" class="btn ghost danger" data-logodel>${icon('trash')} Entfernen</button>` : ''}</div>
-					<p class="muted" style="font-size:12.5px">Erscheint links oben auf jeder Rechnung und in der Seitenleiste. SVG mit Formen/Pfaden, Texte bitte in Pfade umwandeln. Ohne Logo steht dort der Firmenname.</p>
+					<div class="btns"><label class="btn">${icon('download')} Logo hochladen<input type="file" id="logofile" accept=".svg,.png,.jpg,.jpeg,image/svg+xml,image/png,image/jpeg" hidden></label>${($('#logo-svg')?.textContent || '').trim() ? `<button type="button" class="btn ghost danger" data-logodel>${icon('trash')} Entfernen</button>` : ''}</div>
+					<p class="muted" style="font-size:12.5px">Erscheint links oben auf jeder Rechnung und in der Seitenleiste. <b>SVG</b> (gestochen scharf, Texte bitte in Pfade umwandeln), <b>PNG</b> (auch mit transparentem Hintergrund) oder <b>JPG</b> – für den Druck mindestens 600 Pixel breit. Ohne Logo steht dort der Firmenname.</p>
 				</div>
 				<div class="form-grid">${f('company', 'Name / Firma')}${f('tagline', 'Zusatz', { small: 'unter dem Namen' })}${f('owner', 'Inhaber', { small: 'für Grußformel' })}${f('street', 'Straße')}${f('zip', 'PLZ', { c: 'c1' })}${f('city', 'Ort', { c: 'c2' })}${f('phone', 'Telefon')}${f('email', 'E-Mail', { type: 'email' })}${f('web', 'Website')}${f('vat_id', 'UID-Nummer', { small: 'falls vorhanden' })}${f('tax_number', 'Steuernummer')}</div>`,
 			bank: `<div class="form-grid">${f('bank', 'Bank', { small: 'optional' })}${f('bank_owner', 'Kontoinhaber')}${f('iban', 'IBAN', { c: 'c4' })}${f('bic', 'BIC', { c: 'c2' })}${f('payment_days', 'Zahlungsziel Standard (Tage)', { type: 'number', attr: 'min="0"' })}
@@ -1661,15 +1699,27 @@
 				${f('offer_intro', 'Einleitung Angebot', { c: 'c6', area: true, rows: 2 })}${f('offer_outro', 'Schlusstext Angebot', { c: 'c6', area: true, rows: 2 })}${f('offer_subject', 'Betreff Angebot', { c: 'c6' })}${f('offer_body', 'Text Angebot', { c: 'c6', area: true, rows: 8 })}
 				<div class="c6 hint">Platzhalter: <code>{ANREDE}</code> <code>{NUMMER}</code> <code>{DATUM}</code> <code>{BETRAG}</code> <code>{OFFEN}</code> <code>{FAELLIG}</code> <code>{ZAHLUNG}</code> <code>{ZEITRAUM}</code> <code>{KUNDE}</code> <code>{FIRMA}</code> <code>{INHABER}</code> <code>{GUELTIG}</code> (Angebot)</div></div>`,
 			mail: `${S.mail.configured ? `<div class="note-ok">${icon('check')}<span>E-Mail-Versand eingerichtet: <b>${esc(S.mail.from)}</b> über ${esc(S.mail.host)}${S.mail.bcc ? ` · Kopie an ${esc(S.mail.bcc)}` : ''}</span></div>`
-				: `<div class="note-warn">${icon('alert')}<span>Noch kein SMTP eingerichtet – Rechnungen können noch nicht automatisch verschickt werden.</span></div>`}
-				<h3 style="margin:22px 0 8px">So wird der Versand eingerichtet (empfohlen)</h3>
-				<ol style="margin:0;padding-left:20px;line-height:1.75;color:var(--ink-2)">
-					<li>Beim Webhoster ein eigenes Postfach anlegen, z. B. <b>rechnung@deine-domain.at</b>. Dann passen SPF/DKIM zur Absenderadresse und die Rechnungen landen nicht im Spam.</li>
-					<li><code class="code">config.sample.php</code> nach <code class="code">config.php</code> kopieren und SMTP-Daten eintragen: Server, Port <b>465</b> mit <code class="code">ssl</code> (oder 587 mit <code class="code">tls</code>), Benutzer, Passwort.</li>
-					<li>Das Passwort steht nur in der <code class="code">config.php</code>, nie in der Datenbank. Die Datei ist per <code class="code">.htaccess</code> gesperrt. Die Verbindung ist immer verschlüsselt und das Zertifikat wird geprüft.</li>
-					<li>Bei <code class="code">bcc</code> deine eigene Adresse eintragen, dann bekommst du von jeder Rechnung eine Kopie.</li>
-				</ol>
-				<div class="btns" style="margin-top:14px"><input type="email" id="testto" value="${esc(s.email)}" style="max-width:300px"><button class="btn" data-test ${S.mail.configured ? '' : 'disabled'}>${icon('send')} Testmail senden</button></div>
+				: `<div class="note-warn">${icon('alert')}<span>Noch kein E-Mail-Zugang eingerichtet – Rechnungen können noch nicht verschickt werden.</span></div>`}
+				${S.mail.source === 'config' ? `<div class="hint" style="margin-top:16px">Der Zugang ist in der <code>config.php</code> festgelegt und hat dort Vorrang. Zum Ändern die Datei bearbeiten oder den SMTP-Eintrag dort leeren.</div>
+					<div class="btns" style="margin-top:14px"><input type="email" id="testto" value="${esc(s.email)}" style="max-width:300px"><button class="btn" data-test>${icon('send')} Testmail senden</button></div>` : `
+				<h3 style="margin:22px 0 4px">E-Mail-Zugang (SMTP)</h3>
+				<p class="muted" style="font-size:13.5px;margin-bottom:12px">Am besten ein eigenes Postfach deiner Domain, z. B. <b>rechnung@deine-domain.at</b> – die Daten stehen beim Webhoster. Schnellauswahl:</p>
+				<div class="chips" id="smtppre" style="margin-bottom:16px">${SMTP_PRESETS.map((p, i) => `<button type="button" class="chip" data-pre="${i}">${esc(p.name)}</button>`).join('')}</div>
+				<div class="form-grid" id="smtpform">
+					${f('smtp_host', 'SMTP-Server', { c: 'c3', attr: 'placeholder="z. B. mail.deine-domain.at" autocomplete="off"' })}
+					${f('smtp_port', 'Port', { c: 'c1', type: 'number', attr: 'min="1"' })}
+					<label class="field c2"><span>Verschlüsselung</span><select name="smtp_secure"><option value="ssl" ${s.smtp_secure !== 'tls' ? 'selected' : ''}>SSL/TLS (meist Port 465)</option><option value="tls" ${s.smtp_secure === 'tls' ? 'selected' : ''}>STARTTLS (meist Port 587)</option></select></label>
+					${f('smtp_user', 'Benutzername', { c: 'c3', attr: 'autocomplete="off" placeholder="meist die E-Mail-Adresse"' })}
+					<label class="field c3"><span>Passwort <small>${S.mail.has_pass ? '(gespeichert – leer lassen, um es zu behalten)' : ''}</small></span><input type="password" name="smtp_pass" autocomplete="new-password" placeholder="${S.mail.has_pass ? '••••••••' : ''}"></label>
+					${f('smtp_from', 'Absenderadresse', { c: 'c3', type: 'email', attr: 'placeholder="leer = Benutzername"' })}
+					${f('smtp_from_name', 'Absendername', { c: 'c3', attr: `placeholder="${esc(s.company)}"` })}
+					${f('smtp_bcc', 'Kopie jeder Mail an (BCC)', { c: 'c6', small: 'z. B. deine eigene Adresse – mehrere mit Komma' })}
+					<div class="c6 hint" id="smtphint">Das Passwort wird verschlüsselt gespeichert. Der Schlüssel liegt getrennt von der Datenbank, eine Datenbank-Sicherung enthält es also nie im Klartext. Verbindungen sind immer verschlüsselt, das Zertifikat des Servers wird geprüft.</div>
+				</div>
+				<div class="btns" style="margin-top:14px;justify-content:space-between">
+					<div class="btns" style="flex-wrap:nowrap;flex:1;min-width:260px;max-width:460px"><input type="email" id="testto" value="${esc(s.email)}" aria-label="Testmail an"><button type="button" class="btn" data-test>${icon('send')} Testmail</button></div>
+					<div class="btns">${S.mail.has_pass ? `<button type="button" class="btn ghost danger" data-smtpclear>Passwort löschen</button>` : ''}<button type="button" class="btn primary" data-smtpsave>Speichern</button></div>
+				</div>`}
 				<h3 style="margin:26px 0 8px">Automatik für Dauerrechnungen (Cronjob)</h3>
 				<p class="muted" style="margin-bottom:10px">Beim Webhoster einen täglichen Cronjob anlegen (z. B. 7:00 Uhr). Er erstellt fällige Dauerrechnungen und verschickt sie.</p>
 				<div class="hint" style="display:flex;flex-direction:column;gap:8px"><div>Als Befehl: <code>php ${esc('/pfad/zu/rechnungen/cron.php')}</code></div><div>oder als URL: <code id="cronurl">${esc(base + S.cron_url)}</code> <button class="btn sm" data-copy>${icon('copy')} Kopieren</button></div>
@@ -1682,6 +1732,15 @@
 			sicherheit: `<div class="form-grid" style="max-width:520px"><label class="field c6"><span>Aktuelles Passwort</span><input type="password" id="pw0" autocomplete="current-password"></label><label class="field c6"><span>Neues Passwort <small>(mind. 8 Zeichen)</small></span><input type="password" id="pw1" autocomplete="new-password"></label><div class="c6"><button class="btn primary" data-pw>Passwort ändern</button></div></div>
 				<div class="hint" style="margin-top:16px">Nach 8 Fehlversuchen wird die Anmeldung für 15 Minuten gesperrt. Ein Passwortwechsel meldet alle anderen Geräte ab.</div>
 				<div id="probe" style="margin-top:16px"></div>`,
+			design: `<h3 style="margin-bottom:4px">Design der Oberfläche</h3>
+				<p class="muted" style="margin-bottom:16px;font-size:13.5px">Wirkt sofort und für alle Geräte. Hell oder dunkel stellst du pro Gerät unten ein.</p>
+				<div class="themes">${UI_THEMES.map((t) => `<button type="button" class="theme-card ${(S.settings.ui_theme || 'schlicht') === t.id ? 'on' : ''}" data-ui-pick="${t.id}" aria-pressed="${(S.settings.ui_theme || 'schlicht') === t.id}">
+					${miniPreview(t)}<span class="tc-name"><i style="background:${t.color}"></i>${t.name}</span><span class="tc-desc">${t.desc}</span></button>`).join('')}</div>
+				<div class="section-title">Weitere Einstellungen</div>
+				<div style="display:flex;flex-direction:column;gap:14px">
+					<label class="switch"><input type="checkbox" id="accentpdf" ${S.settings.ui_accent_pdf === '1' ? 'checked' : ''}> Akzentfarbe auch auf Rechnungen und Angeboten (Kopfzeile, Titel)</label>
+					<div class="field" style="max-width:420px"><span>Hell oder dunkel (dieses Gerät)</span><div class="seg" id="lightdark">${[['auto', 'Automatisch'], ['light', 'Hell'], ['dark', 'Dunkel']].map(([k, l]) => `<button type="button" data-ld="${k}" class="${store.get('theme', 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+				</div>`,
 			update: `<div id="upd"><div class="muted">Suche nach Updates …</div></div>`,
 			daten: `<div class="grid g2">
 				<div class="card card-pad"><h3>Sicherung</h3><p class="muted" style="margin:6px 0 14px">Die komplette Datenbank (Kunden, Artikel, Rechnungen, Einstellungen) als eine Datei. Regelmäßig herunterladen!</p><a class="btn primary" href="api.php?a=backup">${icon('download')} Datenbank sichern</a></div>
@@ -1689,7 +1748,7 @@
 			</div>
 			<div class="hint" style="margin-top:16px">Original-PDFs der importierten Rechnungen und Belege liegen im Datenordner unter <code>files/</code>. Rechnungen sind in Österreich 7 Jahre aufzubewahren.</div>`,
 		}[tab];
-		main.innerHTML = `<div class="page narrow">${pageHead('Einstellungen')}
+		main.innerHTML = `<div class="page" style="max-width:1080px">${pageHead('Einstellungen')}
 			<nav class="tabs">${tabs.map(([k, l]) => `<a href="#/einstellungen/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</nav>
 			<form id="sf" class="card card-pad" autocomplete="off">${body}</form>
 			${['firma', 'bank', 'texte', 'nummern'].includes(tab) ? `<div class="btns" style="margin-top:14px;justify-content:flex-end"><button class="btn primary" data-save>Speichern</button></div>` : ''}</div>`;
@@ -1709,13 +1768,49 @@
 			try { await api('settings_save', fd); await refresh(); toast('Einstellungen gespeichert'); } catch (e) { fail(e); }
 		});
 		$('#sf').onsubmit = (e) => e.preventDefault();
-		$('[data-test]', main)?.addEventListener('click', async () => { try { await api('mail_test', { to: $('#testto').value }); toast('Testmail gesendet'); } catch (e) { fail(e); } });
+		const smtpData = () => ($('#smtpform', main) ? Object.fromEntries($$('#smtpform [name]', main).map((i) => [i.name, i.value])) : {});
+		$('[data-test]', main)?.addEventListener('click', async (e) => {
+			const b = e.currentTarget; b.disabled = true;
+			try { await api('mail_test', { to: $('#testto').value, ...smtpData() }); toast('Testmail gesendet – bitte Posteingang prüfen'); } catch (er) { fail(er); }
+			b.disabled = false;
+		});
+		$('[data-smtpsave]', main)?.addEventListener('click', async () => {
+			try { await api('smtp_save', smtpData()); await refresh(); toast('E-Mail-Zugang gespeichert'); viewSettings('mail'); } catch (e) { fail(e); }
+		});
+		$('[data-smtpclear]', main)?.addEventListener('click', async () => {
+			if (!await confirmDialog('Passwort löschen?', 'Danach können keine E-Mails mehr verschickt werden, bis ein neues eingetragen ist.', 'Löschen', { danger: true })) return;
+			try { await api('smtp_save', { ...smtpData(), smtp_clear_pass: 1 }); await refresh(); viewSettings('mail'); } catch (e) { fail(e); }
+		});
+		$$('[data-pre]', main).forEach((b) => (b.onclick = () => {
+			const p = SMTP_PRESETS[+b.dataset.pre];
+			$$('[data-pre]', main).forEach((x) => x.classList.toggle('on', x === b));
+			if (p.host !== null) $('[name=smtp_host]', main).value = p.host;
+			$('[name=smtp_port]', main).value = p.port;
+			$('[name=smtp_secure]', main).value = p.secure;
+			$('#smtphint', main).innerHTML = esc(p.hint);
+			$('[name=smtp_host]', main).focus();
+		}));
 		$('[data-copy]', main)?.addEventListener('click', () => { navigator.clipboard?.writeText($('#cronurl').textContent); toast('Kopiert'); });
 		$('[data-export]', main)?.addEventListener('click', () => exportDialog(''));
 		$('[data-pw]', main)?.addEventListener('click', async () => {
 			try { await api('password', { old: $('#pw0').value, new: $('#pw1').value }); toast('Passwort geändert'); $('#pw0').value = $('#pw1').value = ''; } catch (e) { fail(e); }
 		});
 		if (tab === 'update') updatePanel(false);
+		if (tab === 'design') {
+			$$('[data-ui-pick]', main).forEach((b) => (b.onclick = async () => {
+				applyUi(b.dataset.uiPick);
+				$$('[data-ui-pick]', main).forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); });
+				try { await api('settings_save', { ui_theme: b.dataset.uiPick }); await refresh(); toast('Design „' + UI_THEMES.find((t) => t.id === b.dataset.uiPick).name + '“ gespeichert'); } catch (e) { fail(e); }
+			}));
+			$('#accentpdf', main).onchange = async (e) => {
+				try { await api('settings_save', { ui_accent_pdf: e.target.checked ? '1' : '0' }); await refresh(); toast(e.target.checked ? 'Rechnungen bekommen die Akzentfarbe' : 'Rechnungen wieder in Schwarz'); } catch (er) { fail(er); }
+			};
+			$$('[data-ld]', main).forEach((b) => (b.onclick = () => {
+				store.set('theme', b.dataset.ld); applyTheme();
+				$$('[data-ld]', main).forEach((x) => x.classList.toggle('on', x === b));
+				$$('[data-theme-btn]').forEach((x) => (x.innerHTML = icon(themeIcon()) + (x.dataset.themeBtn === 'label' ? `<span class="lbl">Design: ${{ auto: 'Automatisch', light: 'Hell', dark: 'Dunkel' }[b.dataset.ld]}</span>` : '')));
+			}));
+		}
 		if (tab === 'sicherheit') {
 			// Prüfen, ob der Datenordner von außen erreichbar ist (darf er nicht sein)
 			fetch('data/probe.txt', { cache: 'no-store' }).then((r) => r.ok ? r.text() : '').catch(() => '').then((t) => {
@@ -1829,6 +1924,7 @@
 		CSRF = sess.csrf;
 		if (!sess.logged_in) return renderAuth(sess.has_password);
 		try { await refresh(); } catch (e) { return fail(e); }
+		applyUi(S.settings.ui_theme);
 		renderShell();
 		route();
 	}

@@ -82,7 +82,7 @@ try {
 			foreach ( nw_private_settings() as $k ) {
 				unset( $s[ $k ] );
 			}
-			$smtp = nw_config( 'smtp' );
+			$smtp = nw_smtp_config();
 			out(
 				array(
 					'settings'        => $s,
@@ -93,11 +93,11 @@ try {
 					'next_offer'      => nw_next_offer_number(),
 					'recurring'       => nw_recurring_list(),
 					'next_number'     => nw_next_number(),
-					'mail'            => array( 'configured' => nw_mail_configured(), 'from' => $smtp['from'] ?: $smtp['user'], 'host' => $smtp['host'], 'bcc' => $smtp['bcc'] ),
+					'mail'            => array( 'configured' => nw_mail_configured(), 'from' => $smtp['from'] ?: $smtp['user'], 'host' => $smtp['host'], 'bcc' => $smtp['bcc'], 'source' => $smtp['source'], 'has_pass' => '' !== $smtp['pass'] ),
 					'cron_url'        => 'cron.php?key=' . nw_cron_key(),
 					'today'           => nw_today(),
 					'version'         => NW_APP,
-					'logo'            => nw_logo_svg(),
+					'logo'            => nw_logo_html(),
 				)
 			);
 
@@ -234,28 +234,31 @@ try {
 		case 'settings_save':
 			$allowed = array_keys( nw_settings_defaults() );
 			foreach ( $in as $k => $v ) {
-				if ( in_array( $k, $allowed, true ) && ! in_array( $k, array( 'cron_last' ), true ) && ! is_array( $v ) ) {
+				if ( in_array( $k, $allowed, true ) && ! in_array( $k, array( 'cron_last', 'smtp_pass_enc' ), true ) && ! is_array( $v ) ) {
 					nw_set_setting( $k, trim( (string) $v ) );
 				}
+			}
+			if ( isset( $in['ui_theme'] ) || isset( $in['ui_accent_pdf'] ) ) {
+				// Akzent auf Rechnungen: Farbe des Designs oder Schwarz
+				if ( ! isset( nw_ui_themes()[ nw_setting( 'ui_theme' ) ] ) ) {
+					nw_set_setting( 'ui_theme', 'schlicht' );
+				}
+				nw_set_setting( 'accent', '1' === nw_setting( 'ui_accent_pdf' ) ? nw_ui_themes()[ nw_ui_theme() ] : '#16171a' );
 			}
 			out( array( 'ok' => true ) );
 		case 'logo_upload':
 			if ( empty( $_FILES['logo'] ) || UPLOAD_ERR_OK !== $_FILES['logo']['error'] ) {
 				nw_fail( 'Keine Datei empfangen.' );
 			}
-			$svg = (string) file_get_contents( $_FILES['logo']['tmp_name'] );
 			try {
-				nw_logo_parse( $svg );
+				nw_logo_save( (string) file_get_contents( $_FILES['logo']['tmp_name'] ) );
 			} catch ( RuntimeException $e ) {
 				nw_fail( $e->getMessage() );
 			}
-			file_put_contents( nw_logo_file(), $svg );
-			@unlink( nw_data_dir() . '/logo.cache.json' );
 			nw_log( 'Logo geändert' );
-			out( array( 'logo' => nw_logo_svg() ) );
+			out( array( 'logo' => nw_logo_html() ) );
 		case 'logo_delete':
-			@unlink( nw_logo_file() );
-			@unlink( nw_data_dir() . '/logo.cache.json' );
+			nw_logo_delete();
 			out( array( 'logo' => '' ) );
 		case 'password':
 			if ( ! password_verify( (string) ( $in['old'] ?? '' ), nw_setting( 'password_hash' ) ) ) {
@@ -267,11 +270,58 @@ try {
 			}
 			$_SESSION['pw'] = substr( nw_setting( 'password_hash' ), -12 );
 			out( array( 'ok' => true ) );
+		case 'smtp_save':
 		case 'mail_test':
-			$cfg = nw_config( 'smtp' );
-			$to  = nw_emails( $in['to'] ?? nw_setting( 'email' ) );
+			// Formularwerte (auch ungespeichert) – leeres Passwort = gespeichertes verwenden
+			$cur = nw_smtp_config();
+			$cfg = $cur;
+			if ( isset( $in['smtp_host'] ) && 'config' !== $cur['source'] ) {
+				$cfg = array(
+					'host'      => trim( (string) $in['smtp_host'] ),
+					'port'      => max( 1, min( 65535, (int) ( $in['smtp_port'] ?? 465 ) ) ),
+					'secure'    => in_array( $in['smtp_secure'] ?? '', array( 'ssl', 'tls' ), true ) ? $in['smtp_secure'] : 'ssl',
+					'user'      => trim( (string) ( $in['smtp_user'] ?? '' ) ),
+					'pass'      => '' !== (string) ( $in['smtp_pass'] ?? '' ) ? (string) $in['smtp_pass'] : $cur['pass'],
+					'from'      => trim( (string) ( $in['smtp_from'] ?? '' ) ),
+					'from_name' => trim( (string) ( $in['smtp_from_name'] ?? '' ) ),
+					'bcc'       => trim( (string) ( $in['smtp_bcc'] ?? '' ) ),
+					'source'    => 'app',
+				);
+				if ( '' !== $cfg['host'] && ! preg_match( '/^[a-z0-9.-]+$/i', $cfg['host'] ) ) {
+					nw_fail( 'Ungültiger Servername.' );
+				}
+				foreach ( array( 'from', 'user' ) as $k ) {
+					if ( '' !== $cfg[ $k ] && 'from' === $k && ! nw_is_email( $cfg[ $k ] ) ) {
+						nw_fail( 'Ungültige Absenderadresse.' );
+					}
+				}
+				foreach ( preg_split( '/[,;\s]+/', $cfg['bcc'], -1, PREG_SPLIT_NO_EMPTY ) as $e ) {
+					if ( ! nw_is_email( $e ) ) {
+						nw_fail( 'Ungültige Kopie-Adresse: ' . $e );
+					}
+				}
+			}
+			if ( 'smtp_save' === $a ) {
+				if ( 'config' === $cur['source'] ) {
+					nw_fail( 'Der E-Mail-Zugang ist in der config.php festgelegt.' );
+				}
+				foreach ( array( 'host', 'port', 'secure', 'user', 'from', 'from_name', 'bcc' ) as $k ) {
+					nw_set_setting( 'smtp_' . $k, (string) $cfg[ $k ] );
+				}
+				if ( ! empty( $in['smtp_clear_pass'] ) ) {
+					nw_set_setting( 'smtp_pass_enc', '' );
+				} elseif ( '' !== (string) ( $in['smtp_pass'] ?? '' ) ) {
+					nw_set_setting( 'smtp_pass_enc', nw_encrypt( (string) $in['smtp_pass'] ) );
+				}
+				nw_log( 'E-Mail-Zugang gespeichert' );
+				out( array( 'ok' => true ) );
+			}
+			$to = nw_emails( $in['to'] ?? nw_setting( 'email' ) );
 			if ( ! $to ) {
 				out( array( 'error' => 'Keine Empfängeradresse.' ), 400 );
+			}
+			if ( '' === trim( (string) $cfg['host'] ) ) {
+				out( array( 'error' => 'Bitte zuerst einen SMTP-Server eintragen.' ), 400 );
 			}
 			try {
 				NW_SMTP::send( $cfg, array( 'from' => $cfg['from'] ?: $cfg['user'], 'from_name' => $cfg['from_name'] ?: nw_setting( 'company' ), 'to' => $to, 'subject' => 'Testmail aus dem Rechnungsprogramm', 'text' => "Der E-Mail-Versand funktioniert.\n\n" . date( 'd.m.Y H:i' ) ) );
@@ -279,27 +329,6 @@ try {
 				out( array( 'error' => $e->getMessage() ), 400 );
 			}
 			out( array( 'ok' => true ) );
-
-		/* ------------------------------------------------ Software-Update */
-		case 'update_check':
-			try {
-				$r = nw_update_check( ! empty( $_GET['force'] ) );
-			} catch ( Throwable $e ) {
-				$r = array( 'repo' => nw_update_repo(), 'current' => NW_APP, 'error' => $e->getMessage() );
-			}
-			out( $r + array( 'backups' => nw_update_backups(), 'writable' => is_writable( NW_ROOT ) && is_writable( NW_ROOT . '/lib' ) && is_writable( NW_ROOT . '/assets' ) ) );
-		case 'update_install':
-			try {
-				out( nw_update_install() );
-			} catch ( RuntimeException $e ) {
-				out( array( 'error' => $e->getMessage() ), 400 );
-			}
-		case 'update_rollback':
-			try {
-				out( array( 'files' => nw_update_rollback( (string) ( $in['name'] ?? '' ) ) ) );
-			} catch ( RuntimeException $e ) {
-				out( array( 'error' => $e->getMessage() ), 400 );
-			}
 
 		/* ------------------------------------------------ Export / Sicherung */
 		case 'export':

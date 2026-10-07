@@ -98,6 +98,48 @@
 	color-scheme: dark;
 }
 
+/* ---------------------------------------------------------------- Designs (Einstellungen → Design)
+   „schlicht“ nutzt die Werte oben. Alle anderen leiten Akzent, Flächen und Linien aus --accent-base ab. */
+:root[data-ui]:not([data-ui="schlicht"]) {
+	--accent: var(--accent-base);
+	--accent-ink: #ffffff;
+	--accent-soft: color-mix(in srgb, var(--accent-base) 10%, #ffffff);
+	--accent-line: color-mix(in srgb, var(--accent-base) 32%, #ffffff);
+	--cur: var(--accent-base);
+}
+@media (prefers-color-scheme: dark) {
+	:root[data-ui]:not([data-ui="schlicht"]):not([data-theme="light"]) {
+		--accent: color-mix(in srgb, var(--accent-base) 55%, #ffffff);
+		--accent-ink: #0d0f14;
+		--accent-soft: color-mix(in srgb, var(--accent-base) 26%, #171a20);
+		--accent-line: color-mix(in srgb, var(--accent-base) 50%, #171a20);
+		--cur: color-mix(in srgb, var(--accent-base) 55%, #ffffff);
+	}
+}
+:root[data-ui][data-theme="dark"]:not([data-ui="schlicht"]) {
+	--accent: color-mix(in srgb, var(--accent-base) 55%, #ffffff);
+	--accent-ink: #0d0f14;
+	--accent-soft: color-mix(in srgb, var(--accent-base) 26%, #171a20);
+	--accent-line: color-mix(in srgb, var(--accent-base) 50%, #171a20);
+	--cur: color-mix(in srgb, var(--accent-base) 55%, #ffffff);
+}
+/* Modern: weichere Ecken, sanfte Schatten, leicht getönte Fläche */
+:root[data-ui="modern"] {
+	--radius: 14px;
+	--r-ctl: 9px;
+	--bg: #f3f3f9;
+	--line: #e3e3ee;
+	--shadow: 0 1px 2px rgba(30, 27, 75, .04), 0 8px 24px rgba(30, 27, 75, .06);
+}
+@media (prefers-color-scheme: dark) {
+	:root[data-ui="modern"]:not([data-theme="light"]) { --bg: #0e0f17; --surface: #161827; --surface-2: #1c1e30; --line: #2a2c42; --line-2: #222438; --shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+}
+:root[data-ui="modern"][data-theme="dark"] { --bg: #0e0f17; --surface: #161827; --surface-2: #1c1e30; --line: #2a2c42; --line-2: #222438; --shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+:root[data-ui="modern"] .btn.primary { background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #c026d3)); border-color: transparent; }
+:root[data-ui="modern"] .card { border-color: transparent; }
+:root[data-ui="modern"] .nav a.on { background: var(--accent-soft); }
+:root[data-ui="modern"] .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -149,6 +191,12 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .side-head { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 22px; }
 .brand { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 2px 6px 0; color: var(--ink); text-decoration: none; }
 .brand-logo svg { width: auto; max-width: 164px; max-height: 52px; height: auto; display: block; }
+.logo-img { display: block; max-width: 164px; max-height: 52px; width: auto; height: auto; }
+.topbar .logo-img { height: 32px; max-width: 180px; }
+.logo-preview .logo-img { max-width: 260px; max-height: 70px; }
+/* Rasterlogos im dunklen Design auf hellem Grund, damit dunkle Schrift lesbar bleibt */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .side .logo-img, :root:not([data-theme="light"]) .topbar .logo-img { background: #fff; padding: 4px 6px; border-radius: 4px; } }
+:root[data-theme="dark"] .side .logo-img, :root[data-theme="dark"] .topbar .logo-img { background: #fff; padding: 4px 6px; border-radius: 4px; }
 .logo-text { font-size: 19px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; display: block; }
 .logo-edit { display: flex; flex-direction: column; gap: 12px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--line-2); }
 .logo-preview { color: #16171a; background: #fff; border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 18px; display: flex; align-items: center; min-height: 90px; }
@@ -187,6 +235,13 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 1px; padding-top: 10px; border-top: 1px solid var(--line-2); }
 .side-link { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 12px; border: 0; background: transparent; border-radius: var(--r-ctl); color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; white-space: nowrap; }
 .side-link:hover { background: var(--surface-2); color: var(--ink); }
+a.side-link { text-decoration: none; }
+.side-link.on { color: var(--ink); font-weight: 750; }
+.side-link.on svg { color: var(--accent); }
+.side-row { display: flex; align-items: center; gap: 2px; }
+.side-row .side-link { flex: 1; }
+.side-icon { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); border-radius: var(--r-ctl); cursor: pointer; }
+.side-icon:hover { background: var(--surface-2); color: var(--ink); }
 .side-link .keys { margin-left: auto; display: flex; gap: 3px; }
 .side-version { display: block; padding: 6px 12px 0; font: 500 11.5px var(--mono); color: var(--faint); text-decoration: none; }
 .side-version:hover { color: var(--ink); }
@@ -206,6 +261,8 @@ kbd { font: 600 11px var(--sans); border: 1px solid var(--line); border-bottom-w
 	.shell.collapsed .nav a, .shell.collapsed .side-link { justify-content: center; padding: 0; }
 	.shell.collapsed .nav a.on { background: var(--accent-soft); }
 	.shell.collapsed .nav-sep { margin: 10px 6px; }
+	.shell.collapsed .side-row { flex-direction: column; }
+	.shell.collapsed .side-row .side-link { width: 100%; }
 }
 
 .main { min-width: 0; padding: 32px 40px 80px; }
@@ -352,6 +409,28 @@ a.list-item:hover .li-title { color: var(--accent); }
 /* Schrumpfen-Leiste im Editor */
 .shrink { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 20px; }
 .shrink .shrink-info { font-size: 13px; flex: 1; min-width: 200px; }
+
+/* Design-Auswahl mit Mini-Vorschau */
+.themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.theme-card { border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 10px; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 10px; font: inherit; color: inherit; transition: border-color .15s, transform .15s; }
+.theme-card:hover { border-color: var(--faint); transform: translateY(-1px); }
+.theme-card.on { border-color: var(--ink); box-shadow: 0 0 0 3px var(--accent-soft); }
+.theme-card .tc-name { font-weight: 750; display: flex; align-items: center; gap: 8px; }
+.theme-card .tc-name i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.theme-card .tc-desc { font-size: 12px; color: var(--muted); margin-top: -6px; }
+.mini { height: 112px; border-radius: 6px; overflow: hidden; display: grid; grid-template-columns: 30% 1fr; border: 1px solid rgba(0, 0, 0, .06); }
+.mini-side { background: #fff; padding: 9px 7px; display: flex; flex-direction: column; gap: 5px; border-right: 1px solid rgba(0, 0, 0, .06); }
+.mini-side b { display: block; height: 7px; width: 70%; background: #16171a; border-radius: 2px; margin-bottom: 4px; }
+.mini-side span { display: block; height: 6px; border-radius: 2px; background: #e3e4e8; }
+.mini-side span.on { height: 10px; }
+.mini-main { padding: 9px; display: flex; flex-direction: column; gap: 7px; }
+.mini-main .mh { display: flex; justify-content: space-between; align-items: center; }
+.mini-main .mh b { height: 7px; width: 45%; background: #16171a; border-radius: 2px; }
+.mini-main .mh em { height: 12px; width: 32%; }
+.mini-main .mc { background: #fff; flex: 1; padding: 7px; display: flex; align-items: flex-end; gap: 4px; }
+.mini-main .mc i { flex: 1; border-radius: 2px 2px 0 0; }
+.mini-main .mb { display: flex; gap: 4px; }
+.mini-main .mb s { height: 8px; flex: 1; border-radius: 99px; text-decoration: none; }
 
 /* Bezahlt-Häkchen */
 .check {

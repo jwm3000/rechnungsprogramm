@@ -105,9 +105,12 @@ class NW_Document {
 		self::page_frame( $pdf, $s, $accent );
 
 		// ---------------------------------------------------------------- Kopf: Logo links, Titel rechts
-		$logo = nw_logo();
+		$logo   = nw_logo();
+		$raster = $logo ? null : nw_logo_raster_pdf();
 		if ( $logo ) {
 			$pdf->logo( $L, 40, 200, 48, $logo, self::$ink );
+		} elseif ( $raster ) {
+			$pdf->image( $L, 40, 200, 52, $raster );
 		} else {
 			$pdf->text( $L, 62, $s['company'], 18, true, self::$ink );
 			if ( '' !== trim( $s['tagline'] ) ) {

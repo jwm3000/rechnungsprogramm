@@ -357,3 +357,235 @@ function nw_logo_svg() {
 	}
 	return $out . '</svg>';
 }
+
+/* ==================================================================== Rasterlogos (PNG, JPG) */
+
+function nw_logo_raster_file() {
+	foreach ( array( 'png', 'jpg' ) as $ext ) {
+		$f = nw_data_dir() . '/logo.' . $ext;
+		if ( is_file( $f ) ) {
+			return $f;
+		}
+	}
+	return '';
+}
+
+/** Logo für die Oberfläche: bereinigtes SVG oder <img> mit eingebettetem PNG/JPG. */
+function nw_logo_html() {
+	$svg = nw_logo_svg();
+	if ( '' !== $svg ) {
+		return $svg;
+	}
+	$f = nw_logo_raster_file();
+	if ( '' === $f ) {
+		return '';
+	}
+	$mime = str_ends_with( $f, '.png' ) ? 'image/png' : 'image/jpeg';
+	return '<img class="logo-img" alt="Logo" src="data:' . $mime . ';base64,' . base64_encode( (string) file_get_contents( $f ) ) . '">';
+}
+
+/** Rasterlogo als PDF-Bild (zwischengespeichert) oder null. */
+function nw_logo_raster_pdf() {
+	static $img = false;
+	if ( false !== $img ) {
+		return $img;
+	}
+	$f = nw_logo_raster_file();
+	if ( '' === $f ) {
+		return $img = null;
+	}
+	$cache = nw_data_dir() . '/logo.pdfimg';
+	$key   = filemtime( $f ) . ':' . filesize( $f );
+	if ( is_file( $cache ) ) {
+		$c = @unserialize( (string) file_get_contents( $cache ), array( 'allowed_classes' => false ) );
+		if ( is_array( $c ) && ( $c['key'] ?? '' ) === $key ) {
+			return $img = $c['img'];
+		}
+	}
+	try {
+		$img = str_ends_with( $f, '.png' ) ? nw_png_to_pdf( (string) file_get_contents( $f ) ) : nw_jpg_to_pdf( $f );
+	} catch ( Throwable $e ) {
+		$img = null;
+	}
+	@file_put_contents( $cache, serialize( array( 'key' => $key, 'img' => $img ) ) );
+	return $img;
+}
+
+function nw_jpg_to_pdf( $file ) {
+	$i = @getimagesize( $file );
+	if ( ! $i || IMAGETYPE_JPEG !== $i[2] ) {
+		throw new RuntimeException( 'Keine gültige JPG-Datei.' );
+	}
+	$ch = (int) ( $i['channels'] ?? 3 );
+	return array( 'w' => $i[0], 'h' => $i[1], 'cs' => 4 === $ch ? 'DeviceCMYK' : ( 1 === $ch ? 'DeviceGray' : 'DeviceRGB' ), 'filter' => 'DCTDecode', 'data' => (string) file_get_contents( $file ), 'smask' => null );
+}
+
+/**
+ * PNG → PDF-Bild ohne GD: Zeilenfilter auflösen, Farbe und Transparenz (Alphakanal/tRNS) trennen.
+ * Unterstützt Graustufen, RGB, Palette (1–8 Bit), mit und ohne Alpha; nicht: Interlacing.
+ */
+function nw_png_to_pdf( $bin ) {
+	if ( "\x89PNG\r\n\x1a\n" !== substr( $bin, 0, 8 ) ) {
+		throw new RuntimeException( 'Keine gültige PNG-Datei.' );
+	}
+	$pos  = 8;
+	$idat = '';
+	$pal  = '';
+	$trns = '';
+	$hdr  = null;
+	while ( $pos + 8 <= strlen( $bin ) ) {
+		$len  = unpack( 'N', substr( $bin, $pos, 4 ) )[1];
+		$type = substr( $bin, $pos + 4, 4 );
+		$data = substr( $bin, $pos + 8, $len );
+		$pos += 12 + $len;
+		if ( 'IHDR' === $type ) {
+			$hdr = unpack( 'Nw/Nh/Cdepth/Ccolor/Ccomp/Cfilter/Cinterlace', $data );
+		} elseif ( 'PLTE' === $type ) {
+			$pal = $data;
+		} elseif ( 'tRNS' === $type ) {
+			$trns = $data;
+		} elseif ( 'IDAT' === $type ) {
+			$idat .= $data;
+		} elseif ( 'IEND' === $type ) {
+			break;
+		}
+	}
+	if ( ! $hdr || ! $idat ) {
+		throw new RuntimeException( 'PNG unvollständig.' );
+	}
+	if ( $hdr['interlace'] ) {
+		throw new RuntimeException( 'Interlaced-PNG wird nicht unterstützt – bitte ohne „Interlacing“ speichern.' );
+	}
+	$w     = $hdr['w'];
+	$h     = $hdr['h'];
+	$depth = $hdr['depth'];
+	$color = $hdr['color'];
+	if ( $w * $h > 6000000 ) {
+		throw new RuntimeException( 'Das Logo ist zu groß (max. 6 Megapixel).' );
+	}
+	$chan = array( 0 => 1, 2 => 3, 3 => 1, 4 => 2, 6 => 4 )[ $color ] ?? 0;
+	if ( ! $chan || ( 16 !== $depth && 8 !== $depth && ! ( $depth < 8 && in_array( $color, array( 0, 3 ), true ) ) ) ) {
+		throw new RuntimeException( 'PNG-Format nicht unterstützt.' );
+	}
+	$raw = @gzuncompress( $idat );
+	if ( false === $raw ) {
+		throw new RuntimeException( 'PNG-Daten beschädigt.' );
+	}
+	$bpp     = max( 1, (int) ( $chan * $depth / 8 ) );
+	$rowlen  = (int) ceil( $w * $chan * $depth / 8 );
+	$prev    = array_fill( 0, $rowlen, 0 );
+	$rgb     = '';
+	$alpha   = '';
+	$has_a   = false;
+	$gray    = in_array( $color, array( 0, 4 ), true );
+	$palette = array();
+	for ( $i = 0; $i + 2 < strlen( $pal ); $i += 3 ) {
+		$palette[] = substr( $pal, $i, 3 );
+	}
+	$pal_a = array_values( unpack( 'C*', $trns ?: "\x00" ) ?: array() );
+	$p     = 0;
+	for ( $y = 0; $y < $h; $y++ ) {
+		$f   = ord( $raw[ $p ] );
+		$row = array_values( unpack( 'C*', substr( $raw, $p + 1, $rowlen ) ) );
+		$p  += 1 + $rowlen;
+		for ( $i = 0; $i < $rowlen; $i++ ) {
+			$a = $i >= $bpp ? $row[ $i - $bpp ] : 0;
+			$b = $prev[ $i ];
+			$c = $i >= $bpp ? $prev[ $i - $bpp ] : 0;
+			switch ( $f ) {
+				case 1:
+					$row[ $i ] = ( $row[ $i ] + $a ) & 255;
+					break;
+				case 2:
+					$row[ $i ] = ( $row[ $i ] + $b ) & 255;
+					break;
+				case 3:
+					$row[ $i ] = ( $row[ $i ] + ( ( $a + $b ) >> 1 ) ) & 255;
+					break;
+				case 4:
+					$pa = abs( $b - $c );
+					$pb = abs( $a - $c );
+					$pc = abs( $a + $b - 2 * $c );
+					$row[ $i ] = ( $row[ $i ] + ( $pa <= $pb && $pa <= $pc ? $a : ( $pb <= $pc ? $b : $c ) ) ) & 255;
+					break;
+			}
+		}
+		$prev = $row;
+		// Zeile in Pixel zerlegen
+		if ( $depth < 8 ) {
+			$per = 8 / $depth;
+			$max = ( 1 << $depth ) - 1;
+			for ( $x = 0; $x < $w; $x++ ) {
+				$v = ( $row[ intdiv( $x, $per ) ] >> ( 8 - $depth * ( 1 + $x % $per ) ) ) & $max;
+				if ( 3 === $color ) {
+					$rgb .= $palette[ $v ] ?? "\0\0\0";
+					$al   = $pal_a[ $v ] ?? 255;
+				} else {
+					$rgb .= chr( (int) round( $v * 255 / $max ) );
+					$al   = 255;
+				}
+				$alpha .= chr( $al );
+				$has_a  = $has_a || $al < 255;
+			}
+			continue;
+		}
+		$step = 16 === $depth ? 2 : 1;
+		for ( $x = 0, $o = 0; $x < $w; $x++, $o += $chan * $step ) {
+			if ( 3 === $color ) {
+				$v     = $row[ $o ];
+				$rgb  .= $palette[ $v ] ?? "\0\0\0";
+				$al    = $pal_a[ $v ] ?? 255;
+			} elseif ( $gray ) {
+				$rgb  .= chr( $row[ $o ] );
+				$al    = 4 === $color ? $row[ $o + $step ] : 255;
+			} else {
+				$rgb  .= chr( $row[ $o ] ) . chr( $row[ $o + $step ] ) . chr( $row[ $o + 2 * $step ] );
+				$al    = 6 === $color ? $row[ $o + 3 * $step ] : 255;
+			}
+			$alpha .= chr( $al );
+			$has_a  = $has_a || $al < 255;
+		}
+	}
+	return array(
+		'w'      => $w,
+		'h'      => $h,
+		'cs'     => $gray ? 'DeviceGray' : 'DeviceRGB',
+		'filter' => 'FlateDecode',
+		'data'   => gzcompress( $rgb ),
+		'smask'  => $has_a ? gzcompress( $alpha ) : null,
+	);
+}
+
+/**
+ * Hochgeladenes Logo speichern (SVG, PNG oder JPG) – prüft den Inhalt, nicht die Endung.
+ */
+function nw_logo_save( $bin ) {
+	if ( strlen( $bin ) > 3 * 1024 * 1024 ) {
+		throw new RuntimeException( 'Das Logo ist zu groß (max. 3 MB).' );
+	}
+	if ( "\x89PNG" === substr( $bin, 0, 4 ) ) {
+		$ext = 'png';
+		nw_png_to_pdf( $bin ); // prüft das Format
+	} elseif ( "\xFF\xD8" === substr( $bin, 0, 2 ) ) {
+		$ext = 'jpg';
+		$tmp = tempnam( sys_get_temp_dir(), 'nwl' );
+		file_put_contents( $tmp, $bin );
+		try {
+			nw_jpg_to_pdf( $tmp );
+		} finally {
+			@unlink( $tmp );
+		}
+	} else {
+		$ext = 'svg';
+		nw_logo_parse( $bin );
+	}
+	nw_logo_delete();
+	file_put_contents( nw_data_dir() . '/logo.' . $ext, $bin );
+	return $ext;
+}
+
+function nw_logo_delete() {
+	foreach ( array( 'logo.svg', 'logo.png', 'logo.jpg', 'logo.cache.json', 'logo.pdfimg' ) as $f ) {
+		@unlink( nw_data_dir() . '/' . $f );
+	}
+}

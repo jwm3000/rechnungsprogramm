@@ -15,7 +15,7 @@ $v = function ( $f ) {
 	return $f . '?v=' . filemtime( __DIR__ . '/' . $f );
 };
 ?><!doctype html>
-<html lang="de">
+<html lang="de" data-ui="<?php echo nw_ui_theme(); ?>" style="--accent-base: <?php echo nw_ui_themes()[ nw_ui_theme() ]; ?>">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -35,7 +35,7 @@ $v = function ( $f ) {
 <body>
 <div id="app" aria-live="polite"><div class="boot"><div class="boot-mark">[ ]</div></div></div>
 <div id="toasts" role="status"></div>
-<script id="logo-svg" type="text/plain"><?php echo nw_logo_svg(); // bereinigt, nur Pfade ?></script>
+<script id="logo-svg" type="text/plain"><?php echo nw_logo_html(); // bereinigtes SVG oder eingebettetes PNG/JPG ?></script>
 <script src="<?php echo $v( 'assets/app.js' ); ?>" defer></script>
 </body>
 </html>

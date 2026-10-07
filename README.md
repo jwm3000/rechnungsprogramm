@@ -46,7 +46,7 @@
 
 Das PDF entsteht direkt in PHP, ganz ohne Bibliothek:
 
-- eigenes **Logo als Vektorgrafik** (SVG hochladen), gestochen scharf beim Drucken
+- eigenes **Logo** als SVG (Vektor, gestochen scharf), PNG (auch transparent) oder JPG
 - Zahlschein mit **SEPA-QR-Code** – Banking-App öffnen, scannen, fertig
 - USt.-Ausweis je Steuersatz oder Kleinunternehmer-Hinweis
 - Stempel „Bezahlt“, „Storniert“, „Angenommen“, „Abgelehnt“
@@ -86,13 +86,21 @@ Das PDF entsteht direkt in PHP, ganz ohne Bibliothek:
 - Ausgaben mit Belegfoto vom Handy, Überschuss je Jahr
 - Export als CSV (Steuerberatung) oder alle Rechnungen als PDF in einer ZIP-Datei
 
+**Design**
+- **Sieben Designs** mit Mini-Vorschau: Schlicht, Modern (weiche Ecken, sanfte Schatten) und Farbakzente in Blau, Tannengrün, Bordeaux, Kupfer und Petrol
+- Akzentfarbe auf Wunsch auch auf Rechnungen und Angeboten
+- Helles und dunkles Design pro Gerät
+
+<p><img src="docs/design.png" alt="Designs mit Mini-Vorschau" width="70%"></p>
+
 **Bedienung**
 - Suche über alles mit <kbd>Strg</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>, neue Rechnung mit <kbd>N</kbd>
-- Helles und dunkles Design, einklappbares Menü, als App auf den Home-Bildschirm legbar
+- Einklappbares Menü, am Handy Menü von links; als App auf den Home-Bildschirm legbar
 
 **Sicherheit & Betrieb**
 - Anmeldung mit Passwort, Sperre nach Fehlversuchen, CSRF-Schutz, strenge Content-Security-Policy
-- SMTP-Versand nur verschlüsselt mit Zertifikatsprüfung; Zugangsdaten nur in `config.php`, nie in der Datenbank
+- **E-Mail-Zugang direkt in den Einstellungen** – mit Schnellauswahl für Gmail, Microsoft 365, GMX, WEB.DE, iCloud und Testmail
+- SMTP nur verschlüsselt mit Zertifikatsprüfung; das Passwort wird verschlüsselt gespeichert, der Schlüssel liegt getrennt von der Datenbank (Sicherungen enthalten es nie im Klartext)
 - Hochgeladene Logos werden bereinigt (nur Formen – keine Skripte, Links oder Texte)
 - Datenordner per `.htaccess` gesperrt (oder außerhalb des Webverzeichnisses)
 - Datenbank-Sicherung per Klick
@@ -105,7 +113,8 @@ Voraussetzungen: PHP ≥ 8.0 mit `pdo_sqlite`, `mbstring`, `openssl`, `dom` (üb
 1. Neuestes [Release](../../releases/latest) laden, `rechnungen.zip` entpacken und den Ordner `rechnungen/` hochladen (z. B. nach `/rechnungen`).
 2. Der Ordner `rechnungen/data/` muss für PHP beschreibbar sein.
 3. Seite aufrufen und ein Passwort festlegen, dann unter **Einstellungen** Firmendaten, Logo und Bankverbindung eintragen.
-4. Für den E-Mail-Versand `config.sample.php` nach `config.php` kopieren und SMTP eintragen.
+4. Unter **Einstellungen → E-Mail** den SMTP-Zugang eintragen und eine Testmail senden
+   (alternativ in der `config.php` – die hat dann Vorrang).
 5. Für Dauerrechnungen einen täglichen Cronjob anlegen: `php /pfad/zu/rechnungen/cron.php`
    (oder die URL aus *Einstellungen → E-Mail & Automatik*).
 

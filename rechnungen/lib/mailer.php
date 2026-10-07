@@ -46,6 +46,12 @@ class NW_SMTP {
 		$target     = ( 'ssl' === $secure ? 'ssl://' : 'tcp://' ) . $c['host'] . ':' . (int) $c['port'];
 		$this->sock = @stream_socket_client( $target, $errno, $errstr, 20, STREAM_CLIENT_CONNECT, $ctx );
 		if ( ! $this->sock ) {
+			$last = error_get_last()['message'] ?? '';
+			if ( '' === trim( (string) $errstr ) && preg_match( '/certificate|SSL|crypto/i', $last ) ) {
+				$errstr = 'TLS-Verbindung abgelehnt – das Zertifikat des Servers ist ungültig oder passt nicht zum Servernamen. Port und Verschlüsselung prüfen (465 = SSL/TLS, 587 = STARTTLS).';
+			} elseif ( '' === trim( (string) $errstr ) ) {
+				$errstr = $last ? $last : 'keine Antwort – Servername, Port und Verschlüsselung prüfen.';
+			}
 			throw new RuntimeException( 'Verbindung zu ' . $c['host'] . ':' . $c['port'] . ' fehlgeschlagen: ' . $errstr );
 		}
 		stream_set_timeout( $this->sock, 30 );
@@ -151,10 +157,61 @@ class NW_SMTP {
 	}
 }
 
+/* ==================================================================== Zugangsdaten */
+
+/** Geheimer Schlüssel für das SMTP-Passwort – liegt als Datei im Datenordner, nicht in der Datenbank. */
+function nw_secret_key() {
+	$f = nw_data_dir() . '/.secret';
+	if ( ! is_file( $f ) ) {
+		file_put_contents( $f, bin2hex( random_bytes( 32 ) ) );
+		@chmod( $f, 0600 );
+	}
+	return hex2bin( trim( (string) file_get_contents( $f ) ) );
+}
+
+function nw_encrypt( $plain ) {
+	$iv  = random_bytes( 12 );
+	$ct  = openssl_encrypt( (string) $plain, 'aes-256-gcm', nw_secret_key(), OPENSSL_RAW_DATA, $iv, $tag );
+	return base64_encode( $iv . $tag . $ct );
+}
+
+function nw_decrypt( $enc ) {
+	$raw = base64_decode( (string) $enc, true );
+	if ( ! $raw || strlen( $raw ) < 29 ) {
+		return '';
+	}
+	$p = openssl_decrypt( substr( $raw, 28 ), 'aes-256-gcm', nw_secret_key(), OPENSSL_RAW_DATA, substr( $raw, 0, 12 ), substr( $raw, 12, 16 ) );
+	return false === $p ? '' : $p;
+}
+
+/**
+ * SMTP-Zugang: aus config.php (falls dort ein Server steht – hat Vorrang) oder aus den Einstellungen.
+ *
+ * @return array host, port, secure, user, pass, from, from_name, bcc, source (config|app)
+ */
+function nw_smtp_config() {
+	$c = nw_config( 'smtp' );
+	if ( '' !== trim( (string) $c['host'] ) ) {
+		return $c + array( 'source' => 'config' );
+	}
+	$s = nw_settings();
+	return array(
+		'host'      => (string) ( $s['smtp_host'] ?? '' ),
+		'port'      => (int) ( $s['smtp_port'] ?? 465 ) ?: 465,
+		'secure'    => in_array( $s['smtp_secure'] ?? 'ssl', array( 'ssl', 'tls' ), true ) ? $s['smtp_secure'] : 'ssl',
+		'user'      => (string) ( $s['smtp_user'] ?? '' ),
+		'pass'      => nw_decrypt( $s['smtp_pass_enc'] ?? '' ),
+		'from'      => (string) ( $s['smtp_from'] ?? '' ),
+		'from_name' => (string) ( $s['smtp_from_name'] ?? '' ),
+		'bcc'       => (string) ( $s['smtp_bcc'] ?? '' ),
+		'source'    => 'app',
+	);
+}
+
 /* ==================================================================== Rechnungsmails */
 
 function nw_mail_configured() {
-	$c = nw_config( 'smtp' );
+	$c = nw_smtp_config();
 	return '' !== trim( (string) $c['host'] ) && nw_is_email( $c['from'] ?: $c['user'] );
 }
 
@@ -215,7 +272,7 @@ function nw_mail_invoice( $id, $type = 'invoice', array $o = array() ) {
 	if ( 'draft' === $inv['status'] ) {
 		return array( 'ok' => false, 'error' => 'Entwürfe können nicht versendet werden – bitte zuerst ausstellen.', 'to' => '' );
 	}
-	$cfg = nw_config( 'smtp' );
+	$cfg = nw_smtp_config();
 	$to  = nw_emails( $o['to'] ?? ( $inv['recipient']['email'] ?? '' ) );
 	$cc  = nw_emails( $o['cc'] ?? ( $inv['customer']['email_cc'] ?? '' ) );
 	if ( ! $to ) {

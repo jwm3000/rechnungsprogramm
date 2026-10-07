@@ -38,6 +38,24 @@ class NW_PDF {
 		$this->title = $title;
 	}
 
+	/** Eingebettete Bilder: Name => array( w, h, cs, filter, data, smask ) */
+	private $images = array();
+
+	/**
+	 * Rasterbild (aus nw_logo_raster_pdf) einpassen: oben links bei ($x, $y), höchstens $mw × $mh Punkt.
+	 *
+	 * @return array{0:float,1:float} gezeichnete Breite und Höhe
+	 */
+	public function image( $x, $y, $mw, $mh, array $img ) {
+		$name = 'Im' . ( count( $this->images ) + 1 );
+		$this->images[ $name ] = $img;
+		$s = min( $mw / $img['w'], $mh / $img['h'] );
+		$w = $img['w'] * $s;
+		$h = $img['h'] * $s;
+		$this->out( sprintf( 'q %.3F 0 0 %.3F %.2F %.2F cm /%s Do Q', $w, $h, $x, self::H - $y - $h, $name ) );
+		return array( $w, $h );
+	}
+
 	public function page_count() {
 		return count( $this->pages );
 	}
@@ -196,8 +214,22 @@ class NW_PDF {
 		$objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
 		$objects[5] = sprintf( '<< /Title (%s) /Producer (Rechnungsprogramm) /CreationDate (D:%s) >>', $this->escape( $this->encode( $this->title ) ), gmdate( 'YmdHis' ) );
 
-		$kids = array();
+		// Bilder (und ggf. Transparenzmasken) zuerst nummerieren, damit die Seiten darauf verweisen können
 		$n    = 6;
+		$xobj = '';
+		foreach ( $this->images as $name => $img ) {
+			$smask = '';
+			if ( ! empty( $img['smask'] ) ) {
+				$objects[ $n ] = sprintf( '<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>', $img['w'], $img['h'], strlen( $img['smask'] ) ) . "\nstream\n" . $img['smask'] . "\nendstream";
+				$smask         = ' /SMask ' . $n . ' 0 R';
+				$n++;
+			}
+			$objects[ $n ] = sprintf( '<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /%s /BitsPerComponent 8 /Filter /%s%s /Length %d >>', $img['w'], $img['h'], $img['cs'], $img['filter'], $smask, strlen( $img['data'] ) ) . "\nstream\n" . $img['data'] . "\nendstream";
+			$xobj         .= '/' . $name . ' ' . $n . ' 0 R ';
+			$n++;
+		}
+		$res  = '/Font << /F1 3 0 R /F2 4 0 R >>' . ( '' !== $xobj ? ' /XObject << ' . $xobj . '>>' : '' );
+		$kids = array();
 		foreach ( $this->pages as $content ) {
 			$stream = $content;
 			$filter = '';
@@ -205,7 +237,7 @@ class NW_PDF {
 				$stream = gzcompress( $content );
 				$filter = ' /Filter /FlateDecode';
 			}
-			$objects[ $n ]     = sprintf( '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2F %.2F] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents %d 0 R >>', self::W, self::H, $n + 1 );
+			$objects[ $n ]     = sprintf( '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2F %.2F] /Resources << %s >> /Contents %d 0 R >>', self::W, self::H, $res, $n + 1 );
 			$objects[ $n + 1 ] = '<< /Length ' . strlen( $stream ) . $filter . " >>\nstream\n" . $stream . "\nendstream";
 			$kids[]            = $n . ' 0 R';
 			$n                += 2;
