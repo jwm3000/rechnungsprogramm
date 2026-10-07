@@ -5,7 +5,7 @@
  * Beim Webhoster als Cronjob einrichten (täglich, z. B. 7:00 Uhr):
  *   php /pfad/zu/rechnungen/cron.php
  * oder per URL (Schlüssel siehe Einstellungen → E-Mail & Automatik):
- *   https://norbertwinter.at/rechnungen/cron.php?key=…
+ *   https://deine-domain.at/rechnungen/cron.php?key=…
  */
 require __DIR__ . '/lib/bootstrap.php';
 
