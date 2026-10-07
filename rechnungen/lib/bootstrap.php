@@ -157,6 +157,20 @@ function nw_migrate( PDO $pdo ) {
 			PRAGMA user_version = 1;"
 		);
 	}
+	if ( $v < 2 ) {
+		// Angebote: gleiche Tabelle, kind = 'offer'
+		$pdo->exec(
+			"ALTER TABLE invoices ADD COLUMN valid_until TEXT;
+			ALTER TABLE invoices ADD COLUMN offer_state TEXT;
+			ALTER TABLE invoices ADD COLUMN converted_id INTEGER;
+			CREATE INDEX IF NOT EXISTS inv_kind ON invoices(kind);
+			PRAGMA user_version = 2;"
+		);
+	}
+	if ( $v < 3 ) {
+		// Schrumpfen: auto · on · off
+		$pdo->exec( "ALTER TABLE invoices ADD COLUMN compact TEXT DEFAULT 'auto'; PRAGMA user_version = 3;" );
+	}
 }
 
 /* ==================================================================== Einstellungen */
@@ -187,6 +201,12 @@ function nw_settings_defaults() {
 		'next_number'        => '10001',
 		'next_customer'      => '10001',
 		'next_sku'           => '10001',
+		'next_offer'         => '1001',
+		'offer_days'         => '30',
+		'offer_intro'        => 'vielen Dank für Ihre Anfrage. Gerne biete ich Ihnen die folgenden Leistungen an:',
+		'offer_outro'        => 'Ich freue mich auf Ihre Zusage. Bei Fragen bin ich gerne für Sie da.',
+		'offer_subject'      => 'Angebot {NUMMER} – {FIRMA}',
+		'offer_body'         => "{ANREDE}\n\nvielen Dank für Ihre Anfrage. Im Anhang finden Sie mein Angebot {NUMMER} über {BETRAG}. Es ist gültig bis {GUELTIG}.\n\nIch freue mich auf Ihre Rückmeldung.\n\nMit freundlichen Grüßen\n{INHABER}",
 		'greeting'           => 'Sehr geehrte Damen und Herren,',
 		'intro'              => 'wir bedanken uns für den Auftrag und erlauben uns, die nachfolgenden Leistungen in Rechnung zu stellen.',
 		'outro'              => '',
@@ -418,3 +438,4 @@ require_once __DIR__ . '/model.php';
 require_once __DIR__ . '/document.php';
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/updater.php';
+require_once __DIR__ . '/logo.php';

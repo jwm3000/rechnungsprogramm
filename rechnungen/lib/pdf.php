@@ -38,6 +38,10 @@ class NW_PDF {
 		$this->title = $title;
 	}
 
+	public function page_count() {
+		return count( $this->pages );
+	}
+
 	public function add_page() {
 		$this->pages[] = '';
 		$this->cur     = count( $this->pages ) - 1;
@@ -121,20 +125,31 @@ class NW_PDF {
 	}
 
 	/**
-	 * Logo (Vektorpfad aus logo-path.php) – oben links bei ($x, $y), Breite $w in Punkt.
+	 * Logo (aus nw_logo()) einpassen: oben links bei ($x, $y), höchstens $mw × $mh Punkt.
+	 *
+	 * @return array{0:float,1:float} gezeichnete Breite und Höhe
 	 */
-	public function logo( $x, $y, $w, $color = '#111111' ) {
-		static $path = null;
-		if ( null === $path ) {
-			$path = require __DIR__ . '/logo-path.php';
+	public function logo( $x, $y, $mw, $mh, array $logo, $ink = '#111111' ) {
+		list( $x0, $y0, $x1, $y1 ) = $logo['box'];
+		$s   = min( $mw / ( $x1 - $x0 ), $mh / ( $y1 - $y0 ) );
+		$out = 'q ';
+		foreach ( $logo['shapes'] as $sh ) {
+			$p = '';
+			foreach ( $sh[1] as $op ) {
+				if ( 'Z' === $op[0] ) {
+					$p .= 'h ';
+					continue;
+				}
+				$c = array();
+				for ( $i = 1; $i + 1 < count( $op ); $i += 2 ) {
+					$c[] = sprintf( '%.2F %.2F', $x + ( $op[ $i ] - $x0 ) * $s, self::H - ( $y + ( $op[ $i + 1 ] - $y0 ) * $s ) );
+				}
+				$p .= implode( ' ', $c ) . ( 'M' === $op[0] ? ' m ' : ( 'L' === $op[0] ? ' l ' : ' c ' ) );
+			}
+			$out .= $this->rgb( $sh[0] ? $sh[0] : $ink ) . ' rg ' . $p . 'f ';
 		}
-		$s = $w / 4048; // viewBox-Breite
-		$this->out( sprintf( 'q %s rg %.5F 0 0 %.5F %.2F %.2F cm %s f Q', $this->rgb( $color ), $s * 0.1, $s * 0.1, $x, self::H - $y - 868 * $s, $path ) );
-	}
-
-	/** Höhe des Logos bei Breite $w. */
-	public static function logo_height( $w ) {
-		return $w * 868 / 4048;
+		$this->out( $out . 'Q' );
+		return array( ( $x1 - $x0 ) * $s, ( $y1 - $y0 ) * $s );
 	}
 
 	/** Textbreite in Punkt. */
@@ -179,7 +194,7 @@ class NW_PDF {
 		$objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
 		$objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
 		$objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
-		$objects[5] = sprintf( '<< /Title (%s) /Producer (Rechnungen norbertwinter.at) /CreationDate (D:%s) >>', $this->escape( $this->encode( $this->title ) ), gmdate( 'YmdHis' ) );
+		$objects[5] = sprintf( '<< /Title (%s) /Producer (Rechnungsprogramm) /CreationDate (D:%s) >>', $this->escape( $this->encode( $this->title ) ), gmdate( 'YmdHis' ) );
 
 		$kids = array();
 		$n    = 6;

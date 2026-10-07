@@ -172,12 +172,16 @@ function nw_mail_vars( array $inv ) {
 		'{FIRMA}'   => $s['company'],
 		'{INHABER}' => $s['owner'],
 		'{KUNDE}'   => (string) ( $inv['recipient']['name'] ?? '' ),
+		'{GUELTIG}' => nw_date( $inv['valid_until'] ?? '' ),
 	);
 }
 
 function nw_mail_compose( array $inv, $type = 'invoice' ) {
 	$s = nw_settings();
 	$v = nw_mail_vars( $inv );
+	if ( 'offer' === $inv['kind'] ) {
+		return array( 'subject' => strtr( $s['offer_subject'], $v ), 'body' => strtr( $s['offer_body'], $v ) );
+	}
 	return array(
 		'subject' => strtr( 'reminder' === $type ? $s['remind_subject'] : $s['mail_subject'], $v ),
 		'body'    => strtr( 'reminder' === $type ? $s['remind_body'] : $s['mail_body'], $v ),

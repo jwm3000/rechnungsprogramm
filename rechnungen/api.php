@@ -89,12 +89,15 @@ try {
 					'customers'       => nw_customers_list(),
 					'products'        => nw_products_list(),
 					'invoices'        => nw_invoices_list(),
+					'offers'          => nw_invoices_list( array( 'offers' => true ) ),
+					'next_offer'      => nw_next_offer_number(),
 					'recurring'       => nw_recurring_list(),
 					'next_number'     => nw_next_number(),
 					'mail'            => array( 'configured' => nw_mail_configured(), 'from' => $smtp['from'] ?: $smtp['user'], 'host' => $smtp['host'], 'bcc' => $smtp['bcc'] ),
 					'cron_url'        => 'cron.php?key=' . nw_cron_key(),
 					'today'           => nw_today(),
 					'version'         => NW_APP,
+					'logo'            => nw_logo_svg(),
 				)
 			);
 
@@ -105,6 +108,7 @@ try {
 		case 'customer':
 			$c              = nw_customer_get( $id );
 			$c['invoices']  = nw_invoices_list( array( 'customer_id' => $id ) );
+			$c['offers']    = nw_invoices_list( array( 'customer_id' => $id, 'offers' => true ) );
 			$c['recurring'] = array_values( array_filter( nw_recurring_list(), function ( $r ) use ( $id ) { return (int) $r['customer_id'] === $id; } ) );
 			out( $c );
 		case 'customer_save':
@@ -138,6 +142,10 @@ try {
 			out( nw_invoice_cancel( $id ) );
 		case 'invoice_duplicate':
 			out( nw_invoice_duplicate( $id ) );
+		case 'offer_state':
+			out( nw_offer_state( $id, (string) ( $in['state'] ?? '' ) ) );
+		case 'offer_convert':
+			out( nw_offer_convert( $id ) );
 		case 'invoice_delete':
 			nw_invoice_delete( $id );
 			out( array( 'ok' => true ) );
@@ -161,7 +169,9 @@ try {
 			send_file( NW_Document::render( $inv ), NW_Document::filename( $inv ), 'application/pdf', ! empty( $_GET['dl'] ) );
 		case 'preview':
 			$inv = nw_invoice_preview( $in );
-			send_file( NW_Document::render( $inv ), 'Vorschau.pdf', 'application/pdf', false );
+			$pdf = NW_Document::render( $inv );
+			header( 'X-NW-Compact: ' . NW_Document::$last_level );
+			send_file( $pdf, 'Vorschau.pdf', 'application/pdf', false );
 		case 'original':
 			$inv  = nw_invoice_get( $id );
 			$file = $inv['original_file'] ? nw_data_dir( 'files' ) . '/' . $inv['original_file'] : '';
@@ -229,6 +239,24 @@ try {
 				}
 			}
 			out( array( 'ok' => true ) );
+		case 'logo_upload':
+			if ( empty( $_FILES['logo'] ) || UPLOAD_ERR_OK !== $_FILES['logo']['error'] ) {
+				nw_fail( 'Keine Datei empfangen.' );
+			}
+			$svg = (string) file_get_contents( $_FILES['logo']['tmp_name'] );
+			try {
+				nw_logo_parse( $svg );
+			} catch ( RuntimeException $e ) {
+				nw_fail( $e->getMessage() );
+			}
+			file_put_contents( nw_logo_file(), $svg );
+			@unlink( nw_data_dir() . '/logo.cache.json' );
+			nw_log( 'Logo geändert' );
+			out( array( 'logo' => nw_logo_svg() ) );
+		case 'logo_delete':
+			@unlink( nw_logo_file() );
+			@unlink( nw_data_dir() . '/logo.cache.json' );
+			out( array( 'logo' => '' ) );
 		case 'password':
 			if ( ! password_verify( (string) ( $in['old'] ?? '' ), nw_setting( 'password_hash' ) ) ) {
 				out( array( 'error' => 'Aktuelles Passwort stimmt nicht.' ), 400 );

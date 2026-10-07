@@ -84,9 +84,10 @@ function nw_customers_list() {
 	$rows = q_all(
 		"SELECT c.*,
 			(SELECT COUNT(*) FROM invoices i WHERE i.customer_id = c.id AND i.status != 'draft' AND i.kind = 'invoice') AS invoice_count,
-			(SELECT COALESCE(SUM(gross),0) FROM invoices i WHERE i.customer_id = c.id AND i.status != 'draft') AS revenue,
+			(SELECT COALESCE(SUM(gross),0) FROM invoices i WHERE i.customer_id = c.id AND i.status != 'draft' AND i.kind != 'offer') AS revenue,
 			(SELECT COALESCE(SUM(gross - COALESCE(paid_amount,0)),0) FROM invoices i WHERE i.customer_id = c.id AND i.status = 'issued' AND i.kind = 'invoice' AND i.paid_at IS NULL) AS open_amount,
-			(SELECT MAX(invoice_date) FROM invoices i WHERE i.customer_id = c.id AND i.status != 'draft') AS last_invoice,
+			(SELECT MAX(invoice_date) FROM invoices i WHERE i.customer_id = c.id AND i.status != 'draft' AND i.kind != 'offer') AS last_invoice,
+			(SELECT COUNT(*) FROM invoices i WHERE i.customer_id = c.id AND i.kind = 'offer' AND i.status = 'issued' AND COALESCE(i.offer_state,'open') = 'open') AS offer_count,
 			(SELECT COUNT(*) FROM recurring r WHERE r.customer_id = c.id AND r.active = 1) AS recurring_count
 		FROM customers c ORDER BY c.archived, COALESCE(NULLIF(c.company,''), c.person) COLLATE NOCASE"
 	);
@@ -156,8 +157,8 @@ function nw_customer_delete( $id ) {
 
 function nw_products_list() {
 	return q_all(
-		"SELECT p.*, (SELECT COUNT(*) FROM invoice_items it JOIN invoices i ON i.id = it.invoice_id WHERE it.sku = p.sku AND p.sku != '' AND i.status != 'draft') AS used,
-			(SELECT MAX(i.invoice_date) FROM invoice_items it JOIN invoices i ON i.id = it.invoice_id WHERE it.sku = p.sku AND p.sku != '' AND i.status != 'draft') AS last_used
+		"SELECT p.*, (SELECT COUNT(*) FROM invoice_items it JOIN invoices i ON i.id = it.invoice_id WHERE it.sku = p.sku AND p.sku != '' AND i.status != 'draft' AND i.kind != 'offer') AS used,
+			(SELECT MAX(i.invoice_date) FROM invoice_items it JOIN invoices i ON i.id = it.invoice_id WHERE it.sku = p.sku AND p.sku != '' AND i.status != 'draft' AND i.kind != 'offer') AS last_used
 		FROM products p ORDER BY p.archived, p.category, p.name COLLATE NOCASE"
 	);
 }
@@ -274,6 +275,13 @@ function nw_invoice_state( array $r ) {
 	if ( 'draft' === $r['status'] ) {
 		return 'draft';
 	}
+	if ( 'offer' === $r['kind'] ) {
+		$st = $r['offer_state'] ?? 'open';
+		if ( 'accepted' === $st || 'declined' === $st ) {
+			return $st;
+		}
+		return ! empty( $r['valid_until'] ) && $r['valid_until'] < nw_today() ? 'expired' : 'sent';
+	}
 	if ( 'storno' === $r['kind'] ) {
 		return 'storno';
 	}
@@ -343,6 +351,8 @@ function nw_invoice_get( $id ) {
 	$r['taxes'] = $t['taxes'];
 	$r['ref']   = $r['ref_id'] ? q_row( 'SELECT id, number, invoice_date FROM invoices WHERE id = ?', array( $r['ref_id'] ) ) : null;
 	$r['storno'] = q_row( "SELECT id, number, invoice_date FROM invoices WHERE ref_id = ? AND kind = 'storno'", array( $r['id'] ) );
+	$r['converted'] = ! empty( $r['converted_id'] ) ? q_row( 'SELECT id, number, status FROM invoices WHERE id = ?', array( $r['converted_id'] ) ) : null;
+	$r['from_offer'] = q_row( "SELECT id, number FROM invoices WHERE kind = 'offer' AND converted_id = ?", array( $r['id'] ) );
 	$r['customer'] = $r['customer_id'] ? q_row( 'SELECT id, number, company, person, email, email_cc FROM customers WHERE id = ?', array( $r['customer_id'] ) ) : null;
 	$r['mails']    = q_all( 'SELECT kind, to_addr, subject, ok, error, created_at FROM mail_log WHERE invoice_id = ? ORDER BY id DESC', array( $r['id'] ) );
 	$r['activity'] = q_all( 'SELECT text, created_at FROM activity WHERE invoice_id = ? ORDER BY id DESC LIMIT 30', array( $r['id'] ) );
@@ -356,6 +366,7 @@ function nw_invoices_list( array $f = array() ) {
 		$where[] = "substr(i.invoice_date,1,4) = ?";
 		$args[]  = (string) $f['year'];
 	}
+	$where[] = ! empty( $f['offers'] ) ? "i.kind = 'offer'" : "i.kind != 'offer'";
 	if ( ! empty( $f['customer_id'] ) ) {
 		$where[] = 'i.customer_id = ?';
 		$args[]  = (int) $f['customer_id'];
@@ -372,6 +383,11 @@ function nw_invoices_list( array $f = array() ) {
 
 /* ==================================================================== Rechnungen: Schreiben */
 
+function nw_next_offer_number() {
+	$max = (int) q_val( "SELECT MAX(CAST(substr(number,3) AS INTEGER)) FROM invoices WHERE kind = 'offer' AND number LIKE 'A-%'" );
+	return 'A-' . max( (int) nw_setting( 'next_offer' ), $max + 1 );
+}
+
 function nw_next_number() {
 	$max = (int) q_val( "SELECT MAX(CAST(number AS INTEGER)) FROM invoices WHERE number GLOB '[0-9]*'" );
 	return (string) max( (int) nw_setting( 'next_number' ), $max + 1 );
@@ -383,6 +399,7 @@ function nw_next_number() {
  * @return array{0:array, 1:array}  Zeile für invoices, Positionen
  */
 function nw_invoice_build( array $d ) {
+	$offer    = 'offer' === ( $d['kind'] ?? '' );
 	$customer = ! empty( $d['customer_id'] ) ? nw_customer_get( (int) $d['customer_id'] ) : null;
 	$small    = nw_small_business();
 	$items    = nw_items_clean( (array) ( $d['items'] ?? array() ), $small );
@@ -415,13 +432,15 @@ function nw_invoice_build( array $d ) {
 		'due_date'       => nw_add_days( $date, $days ),
 		'subject'        => trim( (string) ( $d['subject'] ?? '' ) ),
 		'greeting'       => '' !== trim( (string) ( $d['greeting'] ?? '' ) ) ? trim( $d['greeting'] ) : ( $customer ? nw_customer_greeting( $customer ) : nw_setting( 'greeting' ) ),
-		'intro'          => (string) ( $d['intro'] ?? nw_setting( 'intro' ) ),
-		'outro'          => (string) ( $d['outro'] ?? nw_setting( 'outro' ) ),
+		'intro'          => (string) ( $d['intro'] ?? nw_setting( $offer ? 'offer_intro' : 'intro' ) ),
+		'outro'          => (string) ( $d['outro'] ?? nw_setting( $offer ? 'offer_outro' : 'outro' ) ),
+		'valid_until'    => $offer ? ( $valid( $d['valid_until'] ?? null ) ?: nw_add_days( $date, (int) nw_setting( 'offer_days' ) ) ) : null,
 		'net'            => $sum['net'],
 		'tax'            => $sum['tax'],
 		'gross'          => $sum['gross'],
 		'small_business' => $small ? 1 : 0,
 		'note'           => (string) ( $d['note'] ?? '' ),
+		'compact'        => in_array( $d['compact'] ?? '', array( 'auto', 'on', 'off' ), true ) ? $d['compact'] : 'auto',
 		'updated_at'     => nw_now(),
 	);
 	if ( $row['period_from'] && $row['period_to'] && $row['period_to'] < $row['period_from'] ) {
@@ -435,13 +454,14 @@ function nw_invoice_preview( array $d ) {
 	list( $row, $items ) = nw_invoice_build( $d );
 	$row = array_merge(
 		$row,
-		array( 'id' => (int) ( $d['id'] ?? 0 ), 'number' => null, 'kind' => 'invoice', 'status' => 'draft', 'paid_at' => null, 'paid_amount' => null, 'ref_id' => null )
+		array( 'id' => (int) ( $d['id'] ?? 0 ), 'number' => null, 'kind' => 'offer' === ( $d['kind'] ?? '' ) ? 'offer' : 'invoice', 'status' => 'draft', 'paid_at' => null, 'paid_amount' => null, 'ref_id' => null, 'offer_state' => null, 'converted_id' => null )
 	);
 	$inv          = nw_invoice_row( $row );
 	$inv['items'] = $items;
 	$inv['taxes'] = nw_totals( $items )['taxes'];
 	$inv['ref']   = null;
 	$inv['storno'] = null;
+	$inv['converted'] = null;
 	return $inv;
 }
 
@@ -460,6 +480,7 @@ function nw_invoice_save( array $d ) {
 		nw_update( 'invoices', $id, array( 'note' => (string) ( $d['note'] ?? $old['note'] ), 'recipient' => json_encode( $rec, JSON_UNESCAPED_UNICODE ), 'updated_at' => nw_now() ) );
 		return nw_invoice_get( $id );
 	}
+	$d['kind'] = $old ? $old['kind'] : ( 'offer' === ( $d['kind'] ?? '' ) ? 'offer' : 'invoice' );
 	list( $row, $items ) = nw_invoice_build( $d );
 	db()->beginTransaction();
 	try {
@@ -468,7 +489,7 @@ function nw_invoice_save( array $d ) {
 			q( 'DELETE FROM invoice_items WHERE invoice_id = ?', array( $id ) );
 		} else {
 			$row['status']       = 'draft';
-			$row['kind']         = 'invoice';
+			$row['kind']         = $d['kind'];
 			$row['recurring_id'] = ! empty( $d['recurring_id'] ) ? (int) $d['recurring_id'] : null;
 			$row['created_at']   = nw_now();
 			$id                  = nw_insert( 'invoices', $row );
@@ -498,27 +519,33 @@ function nw_invoice_issue( $id ) {
 	if ( ! $inv['recipient']['lines'] ) {
 		nw_fail( 'Bitte einen Empfänger angeben.' );
 	}
+	$offer = 'offer' === $inv['kind'];
 	db()->beginTransaction();
 	try {
-		$number = nw_next_number();
+		$number = $offer ? nw_next_offer_number() : nw_next_number();
 		nw_update(
 			'invoices',
 			$id,
 			array(
-				'number'    => $number,
-				'status'    => 'issued',
-				'issued_at' => nw_now(),
-				'due_date'  => nw_add_days( $inv['invoice_date'], (int) $inv['payment_days'] ),
-				'token'     => bin2hex( random_bytes( 12 ) ),
+				'number'      => $number,
+				'status'      => 'issued',
+				'issued_at'   => nw_now(),
+				'due_date'    => nw_add_days( $inv['invoice_date'], (int) $inv['payment_days'] ),
+				'offer_state' => $offer ? 'open' : null,
+				'token'       => bin2hex( random_bytes( 12 ) ),
 			)
 		);
-		nw_set_setting( 'next_number', (string) ( (int) $number + 1 ) );
+		if ( $offer ) {
+			nw_set_setting( 'next_offer', (string) ( (int) substr( $number, 2 ) + 1 ) );
+		} else {
+			nw_set_setting( 'next_number', (string) ( (int) $number + 1 ) );
+		}
 		db()->commit();
 	} catch ( Throwable $e ) {
 		db()->rollBack();
 		throw $e;
 	}
-	nw_log( 'Rechnung ' . $number . ' ausgestellt', $id, $inv['customer_id'] );
+	nw_log( ( $offer ? 'Angebot ' : 'Rechnung ' ) . $number . ' ausgestellt', $id, $inv['customer_id'] );
 	return nw_invoice_get( $id );
 }
 
@@ -601,6 +628,7 @@ function nw_invoice_cancel( $id ) {
 function nw_invoice_duplicate( $id ) {
 	$inv = nw_invoice_get( $id );
 	$new = array(
+		'kind'              => 'offer' === $inv['kind'] ? 'offer' : 'invoice',
 		'customer_id'       => $inv['customer_id'],
 		'recipient'         => $inv['recipient'],
 		'refresh_recipient' => (bool) $inv['customer_id'],
@@ -622,6 +650,49 @@ function nw_invoice_duplicate( $id ) {
 		unset( $new['greeting'] ); // aus den Kundendaten neu bilden
 	}
 	return nw_invoice_save( $new );
+}
+
+/** Angebot: Zusage / Absage / wieder offen. */
+function nw_offer_state( $id, $state ) {
+	$inv = nw_invoice_get( $id );
+	if ( 'offer' !== $inv['kind'] || 'issued' !== $inv['status'] ) {
+		nw_fail( 'Nur ausgestellte Angebote haben einen Status.' );
+	}
+	if ( ! in_array( $state, array( 'open', 'accepted', 'declined' ), true ) ) {
+		nw_fail( 'Unbekannter Status.' );
+	}
+	nw_update( 'invoices', $inv['id'], array( 'offer_state' => $state, 'updated_at' => nw_now() ) );
+	$t = array( 'open' => 'wieder offen', 'accepted' => 'angenommen', 'declined' => 'abgelehnt' );
+	nw_log( 'Angebot ' . $t[ $state ], $inv['id'], $inv['customer_id'] );
+	return nw_invoice_get( $inv['id'] );
+}
+
+/** Angebot in eine Rechnung (Entwurf) umwandeln – Positionen, Kunde und Betreff werden übernommen. */
+function nw_offer_convert( $id ) {
+	$offer = nw_invoice_get( $id );
+	if ( 'offer' !== $offer['kind'] ) {
+		nw_fail( 'Das ist kein Angebot.' );
+	}
+	if ( $offer['converted'] ) {
+		nw_fail( 'Aus diesem Angebot wurde schon die Rechnung ' . ( $offer['converted']['number'] ?: '(Entwurf)' ) . ' erstellt.' );
+	}
+	$inv = nw_invoice_save(
+		array(
+			'kind'              => 'invoice',
+			'customer_id'       => $offer['customer_id'],
+			'recipient'         => $offer['recipient'],
+			'refresh_recipient' => (bool) $offer['customer_id'],
+			'invoice_date'      => nw_today(),
+			'subject'           => $offer['subject'],
+			'greeting'          => $offer['greeting'],
+			'items'             => $offer['items'],
+			'note'              => 'Aus Angebot ' . ( $offer['number'] ?: 'Entwurf' ),
+		)
+	);
+	nw_update( 'invoices', $offer['id'], array( 'converted_id' => $inv['id'], 'offer_state' => 'issued' === $offer['status'] ? 'accepted' : $offer['offer_state'], 'updated_at' => nw_now() ) );
+	nw_log( 'In Rechnung umgewandelt', $offer['id'], $offer['customer_id'] );
+	nw_log( 'Aus Angebot ' . ( $offer['number'] ?: 'Entwurf' ) . ' erstellt', $inv['id'], $offer['customer_id'] );
+	return nw_invoice_get( $inv['id'] );
 }
 
 function nw_invoice_delete( $id ) {
@@ -861,11 +932,11 @@ function nw_dashboard() {
 	$year  = (int) date( 'Y' );
 	$today = nw_today();
 	$rev   = function ( $y ) {
-		return (float) q_val( "SELECT COALESCE(SUM(gross),0) FROM invoices WHERE status != 'draft' AND substr(invoice_date,1,4) = ?", array( (string) $y ) );
+		return (float) q_val( "SELECT COALESCE(SUM(gross),0) FROM invoices WHERE status != 'draft' AND kind != 'offer' AND substr(invoice_date,1,4) = ?", array( (string) $y ) );
 	};
 	$months = function ( $y ) {
 		$m = array_fill( 0, 12, 0.0 );
-		foreach ( q_all( "SELECT CAST(substr(invoice_date,6,2) AS INTEGER) AS m, SUM(gross) AS s FROM invoices WHERE status != 'draft' AND substr(invoice_date,1,4) = ? GROUP BY m", array( (string) $y ) ) as $r ) {
+		foreach ( q_all( "SELECT CAST(substr(invoice_date,6,2) AS INTEGER) AS m, SUM(gross) AS s FROM invoices WHERE status != 'draft' AND kind != 'offer' AND substr(invoice_date,1,4) = ? GROUP BY m", array( (string) $y ) ) as $r ) {
 			$m[ (int) $r['m'] - 1 ] = round( (float) $r['s'], 2 );
 		}
 		return $m;
@@ -877,7 +948,7 @@ function nw_dashboard() {
 		)
 	);
 	$overdue = array_values( array_filter( $open, function ( $r ) { return 'overdue' === $r['state']; } ) );
-	$years   = q_all( "SELECT substr(invoice_date,1,4) AS y, ROUND(SUM(gross),2) AS revenue, COUNT(CASE WHEN kind = 'invoice' THEN 1 END) AS n FROM invoices WHERE status != 'draft' GROUP BY y ORDER BY y" );
+	$years   = q_all( "SELECT substr(invoice_date,1,4) AS y, ROUND(SUM(gross),2) AS revenue, COUNT(CASE WHEN kind = 'invoice' THEN 1 END) AS n FROM invoices WHERE status != 'draft' AND kind != 'offer' GROUP BY y ORDER BY y" );
 	$exp     = (float) q_val( 'SELECT COALESCE(SUM(amount),0) FROM expenses WHERE substr(date,1,4) = ?', array( (string) $year ) );
 	$rec     = nw_recurring_list();
 	$soon    = nw_add_days( $today, 60 );
@@ -885,7 +956,7 @@ function nw_dashboard() {
 	$top     = q_all(
 		"SELECT c.id, COALESCE(NULLIF(c.company,''), c.person) AS name, ROUND(SUM(i.gross),2) AS revenue
 		FROM invoices i JOIN customers c ON c.id = i.customer_id
-		WHERE i.status != 'draft' AND substr(i.invoice_date,1,4) = ? GROUP BY c.id ORDER BY revenue DESC LIMIT 5",
+		WHERE i.status != 'draft' AND i.kind != 'offer' AND substr(i.invoice_date,1,4) = ? GROUP BY c.id ORDER BY revenue DESC LIMIT 5",
 		array( (string) $year )
 	);
 	$active_rec = array_values( array_filter( $rec, function ( $r ) { return $r['active']; } ) );
@@ -893,7 +964,7 @@ function nw_dashboard() {
 		'year'          => $year,
 		'revenue'       => $rev( $year ),
 		'revenue_prev'  => $rev( $year - 1 ),
-		'revenue_prev_ytd' => (float) q_val( "SELECT COALESCE(SUM(gross),0) FROM invoices WHERE status != 'draft' AND invoice_date BETWEEN ? AND ?", array( ( $year - 1 ) . '-01-01', ( $year - 1 ) . substr( $today, 4 ) ) ),
+		'revenue_prev_ytd' => (float) q_val( "SELECT COALESCE(SUM(gross),0) FROM invoices WHERE status != 'draft' AND kind != 'offer' AND invoice_date BETWEEN ? AND ?", array( ( $year - 1 ) . '-01-01', ( $year - 1 ) . substr( $today, 4 ) ) ),
 		'months'        => $months( $year ),
 		'months_prev'   => $months( $year - 1 ),
 		'years'         => $years,
@@ -903,6 +974,12 @@ function nw_dashboard() {
 		'overdue_sum'   => round( array_sum( array_column( $overdue, 'gross' ) ), 2 ),
 		'overdue_count' => count( $overdue ),
 		'drafts'        => array_map( 'nw_invoice_row', q_all( "SELECT * FROM invoices WHERE status = 'draft' ORDER BY updated_at DESC LIMIT 6" ) ),
+		'offers_open'   => array_values(
+			array_filter(
+				array_map( 'nw_invoice_row', q_all( "SELECT * FROM invoices WHERE kind = 'offer' AND status = 'issued' AND COALESCE(offer_state,'open') = 'open' ORDER BY valid_until" ) ),
+				function ( $r ) { return 'sent' === $r['state']; }
+			)
+		),
 		'expenses'      => $exp,
 		'recurring_due' => array_values( array_filter( $rec, function ( $r ) { return $r['due']; } ) ),
 		'recurring_upcoming' => $upcoming,

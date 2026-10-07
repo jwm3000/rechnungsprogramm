@@ -1,6 +1,6 @@
 <?php
 /**
- * Rechnungen – norbertwinter.at/rechnungen
+ * Rechnungsprogramm
  * Einstiegsseite der App (alles Weitere lädt app.js über api.php).
  */
 require __DIR__ . '/lib/bootstrap.php';
@@ -35,7 +35,7 @@ $v = function ( $f ) {
 <body>
 <div id="app" aria-live="polite"><div class="boot"><div class="boot-mark">[ ]</div></div></div>
 <div id="toasts" role="status"></div>
-<script id="logo-svg" type="text/plain"><?php echo file_get_contents( __DIR__ . '/assets/logo.svg' ); ?></script>
+<script id="logo-svg" type="text/plain"><?php echo nw_logo_svg(); // bereinigt, nur Pfade ?></script>
 <script src="<?php echo $v( 'assets/app.js' ); ?>" defer></script>
 </body>
 </html>

@@ -80,15 +80,18 @@
 		chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
 		key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/>',
 		send: '<path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/>',
+		offer: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/>',
 		sidebar: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M9 4v16"/>',
 	};
 	const icon = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
-	const LOGO = () => $('#logo-svg')?.textContent || '<b>norbertwinter</b>';
+	/** Logo (bereinigtes SVG vom Server) oder der Firmenname als Schriftzug. */
+	const LOGO = () => ($('#logo-svg')?.textContent || '').trim() || `<span class="logo-text">${esc(S.settings.company || 'Rechnungen')}</span>`;
+	const initials = () => (S.settings.company || 'Rechnungen').split(/\s+/).filter((w) => !/^(gmbh|og|kg|e\.?u\.?|ag)$/i.test(w)).map((w) => w[0]).join('').slice(0, 2).toLowerCase();
 
 	/** Rundes Symbol für wiederkehrende Rechnungen bzw. Kunden mit Dauerrechnung. */
 	const recDot = (title = 'Wiederkehrende Rechnung') => `<span class="rec-dot" title="${title}" aria-label="${title}">${icon('repeat')}</span>`;
 	const withRec = (name, on, title) => `<span class="name-rec"><span class="nm">${name}</span>${on ? recDot(title) : ''}</span>`;
-	const STATE_LABEL = { draft: 'Entwurf', open: 'Offen', overdue: 'Überfällig', paid: 'Bezahlt', cancelled: 'Storniert', storno: 'Storno' };
+	const STATE_LABEL = { draft: 'Entwurf', open: 'Offen', overdue: 'Überfällig', paid: 'Bezahlt', cancelled: 'Storniert', storno: 'Storno', sent: 'Offen', accepted: 'Angenommen', declined: 'Abgelehnt', expired: 'Abgelaufen' };
 	const badge = (state, extra = '') => `<span class="badge b-${state}">${STATE_LABEL[state] || state}${extra}</span>`;
 	const MODE_LABEL = { send: 'Automatisch senden', issue: 'Ausstellen (ohne Mail)', draft: 'Entwurf zur Prüfung' };
 	const INTERVALS = { 1: 'monatlich', 2: 'alle 2 Monate', 3: 'vierteljährlich', 6: 'halbjährlich', 12: 'jährlich', 24: 'alle 2 Jahre', 36: 'alle 3 Jahre' };
@@ -105,6 +108,7 @@
 		const res = await fetch('api.php?a=' + action + q, init);
 		if (opts.blob) {
 			if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Fehler ' + res.status);
+			if (opts.headers) return { blob: await res.blob(), headers: res.headers };
 			return res.blob();
 		}
 		const json = await res.json().catch(() => ({ error: 'Ungültige Antwort vom Server (' + res.status + ')' }));
@@ -207,6 +211,50 @@
 		});
 	}
 
+	/* ---------------------------------------------------------------- PLZ ↔ Ort (Österreich, Daten: GeoNames CC BY 4.0) */
+
+	let PLZ = null;
+	const loadPlz = () => (PLZ ||= fetch('assets/plz-at.json').then((r) => r.json()).then((d) => {
+		const list = [];
+		Object.entries(d).forEach(([plz, names]) => names.forEach((n, i) => list.push({ plz, name: n, main: i === 0, key: norm(n) })));
+		return { byPlz: d, list };
+	}).catch(() => ({ byPlz: {}, list: [] })));
+	const isAustria = (v) => !v || /^(österreich|oesterreich|austria|at)$/i.test(String(v).trim());
+
+	/** Vorschläge: PLZ eintippen → Ort, Ort eintippen → PLZ. */
+	function plzAssist(zipEl, cityEl, countryEl) {
+		if (!zipEl || !cityEl) return;
+		let data = null;
+		loadPlz().then((d) => (data = d));
+		let autoCity = false;
+		const opt = (plz, name, main) => ({ value: { plz, name }, html: `<span class="mono">${esc(plz)}</span><div class="grow"><div class="t">${esc(name)}</div>${main ? '' : '<div class="s">Ortschaft</div>'}</div>` });
+		const austria = () => isAustria(countryEl?.value);
+		const pick = (v) => {
+			zipEl.value = v.plz; cityEl.value = v.name; autoCity = true; // aus Vorschlag – darf bei PLZ-Änderung mitwandern
+		};
+		autocomplete(zipEl, (q) => {
+			if (!data || !austria() || !/^\d{1,4}$/.test(q.trim())) return [];
+			const t = q.trim();
+			return Object.keys(data.byPlz).filter((p) => p.startsWith(t)).slice(0, 4 === t.length ? 1 : 8)
+				.flatMap((p) => data.byPlz[p].slice(0, 4 === t.length ? 12 : 1).map((n, i) => opt(p, n, i === 0)));
+		}, pick);
+		autocomplete(cityEl, (q) => {
+			const n = norm(q.trim());
+			if (!data || !austria() || n.length < 2) return [];
+			const starts = data.list.filter((e) => e.key.startsWith(n));
+			const more = starts.length < 8 ? data.list.filter((e) => !e.key.startsWith(n) && e.key.includes(n)) : [];
+			return [...starts.sort((a, b) => b.main - a.main), ...more].slice(0, 8).map((e) => opt(e.plz, e.name, e.main));
+		}, pick);
+		// Vollständige PLZ: Postort automatisch eintragen, solange der Ort leer ist oder automatisch kam
+		zipEl.addEventListener('input', () => {
+			const t = zipEl.value.trim();
+			if (data && austria() && /^\d{4}$/.test(t) && data.byPlz[t] && (!cityEl.value.trim() || autoCity)) {
+				cityEl.value = data.byPlz[t][0]; autoCity = true;
+			}
+		});
+		cityEl.addEventListener('input', (e) => { if (e.isTrusted) autoCity = false; });
+	}
+
 	const customerSource = (q) => {
 		const n = norm(q);
 		const list = S.customers.filter((c) => !+c.archived && (!n || norm(c.name + ' ' + c.person + ' ' + c.number + ' ' + c.city).includes(n))).slice(0, 8)
@@ -226,6 +274,7 @@
 	const NAV = [
 		['#/', 'home', 'Übersicht'],
 		['#/rechnungen', 'file', 'Rechnungen'],
+		['#/angebote', 'offer', 'Angebote'],
 		['#/kunden', 'users', 'Kunden'],
 		['#/dauerrechnungen', 'repeat', 'Dauerrechnungen'],
 		['#/artikel', 'box', 'Artikel'],
@@ -253,7 +302,7 @@
 				<div class="side-head">
 					<a class="brand" href="#/" aria-label="Übersicht">
 						<span class="brand-logo">${LOGO()}</span>
-						<span class="brand-mark" aria-hidden="true">[nw]</span>
+						<span class="brand-mark" aria-hidden="true">[${esc(initials())}]</span>
 					</a>
 					<button class="side-toggle" type="button" data-collapse aria-label="Menü einklappen" title="Menü ein-/ausklappen">${icon('sidebar')}</button>
 				</div>
@@ -304,6 +353,8 @@
 		const set = (h, txt, alert) => { const el = $(`[data-count="${h}"]`); if (el) { el.textContent = txt || ''; el.classList.toggle('alert', !!alert); } };
 		set('#/rechnungen', open.length ? (overdue ? overdue + ' / ' : '') + open.length : '', overdue);
 		set('#/dauerrechnungen', due ? due + ' fällig' : '', due);
+		const offOpen = (S.offers || []).filter((o) => o.state === 'sent').length;
+		set('#/angebote', offOpen ? String(offOpen) : '', false);
 		const dot = $('[data-dot]');
 		if (dot) { dot.textContent = overdue; dot.classList.toggle('hide', !overdue); }
 	}
@@ -321,6 +372,9 @@
 		[/^#?\/?$/, viewDashboard],
 		[/^#\/rechnungen$/, viewInvoices],
 		[/^#\/rechnung\/neu$/, (q) => viewInvoice(null, q)],
+		[/^#\/angebote$/, viewOffers],
+		[/^#\/angebot\/neu$/, (q) => viewInvoice(null, q, 'offer')],
+		[/^#\/angebot\/(\d+)$/, (q, m) => viewInvoice(+m[1], q)],
 		[/^#\/rechnung\/(\d+)$/, (q, m) => viewInvoice(+m[1], q)],
 		[/^#\/kunden$/, viewCustomers],
 		[/^#\/kunde\/(\d+)$/, (q, m) => viewCustomer(+m[1])],
@@ -344,7 +398,7 @@
 		lastHash = location.hash;
 		$$('[data-nav]').forEach((a) => {
 			const h = a.dataset.nav;
-			a.classList.toggle('on', h === '#/' ? path === '#/' || path === '' : path.startsWith(h) || (h === '#/rechnungen' && path.startsWith('#/rechnung/')) || (h === '#/kunden' && path.startsWith('#/kunde/')) || (h === '#/mehr' && ['#/artikel', '#/dauerrechnungen', '#/ausgaben', '#/einstellungen'].some((p) => path.startsWith(p))));
+			a.classList.toggle('on', h === '#/' ? path === '#/' || path === '' : path.startsWith(h) || (h === '#/rechnungen' && path.startsWith('#/rechnung/')) || (h === '#/angebote' && path.startsWith('#/angebot/')) || (h === '#/kunden' && path.startsWith('#/kunde/')) || (h === '#/mehr' && ['#/angebot', '#/artikel', '#/dauerrechnungen', '#/ausgaben', '#/einstellungen'].some((p) => path.startsWith(p))));
 		});
 		const main = $('#main');
 		for (const [re, fn] of routes) {
@@ -382,7 +436,7 @@
 		main.innerHTML = `<div class="page">
 			<div class="app-name">Rechnungsprogramm</div>
 			${pageHead(S.settings.owner ? `${hello}, ${esc(S.settings.owner.split(' ')[0])}.` : `${hello}.`, { sub: new Date().toLocaleDateString('de-AT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) },
-				`<a class="btn" href="#/dauerrechnungen">${icon('repeat')} Dauerrechnungen</a><a class="btn primary" href="#/rechnung/neu">${icon('plus')} Neue Rechnung</a>`)}
+				`<a class="btn" href="#/angebot/neu">${icon('offer')} Neues Angebot</a><a class="btn primary" href="#/rechnung/neu">${icon('plus')} Neue Rechnung</a>`)}
 
 			${!S.settings.company || !S.settings.iban ? `<div class="note-warn" style="margin-bottom:16px">${icon('alert')}<span>Bitte zuerst <a href="#/einstellungen/firma">Firmendaten</a> und <a href="#/einstellungen/bank">Bankverbindung</a> eintragen – sie stehen auf jeder Rechnung.</span></div>` : ''}
 			${dueRec.length ? `<div class="card card-pad" style="margin-bottom:16px;border-color:var(--accent-line);background:var(--accent-soft)">
@@ -438,8 +492,11 @@
 								<b class="num">${money(r.gross)}</b></a>`).join('')}</div>` : '<div class="empty">In den nächsten 60 Tagen keine.</div>'}</div>
 					</div>
 
+					${d.offers_open.length ? `<div class="card"><div class="card-head"><h2>Offene Angebote</h2><a class="btn sm ghost" href="#/angebote?f=sent">${icon('right')}</a></div><div class="card-body" style="padding-top:4px"><div class="list">${d.offers_open.map((o) => `
+						<a class="list-item" href="#/angebot/${o.id}"><div class="li-main"><div class="li-title">${esc(o.recipient.name)}</div><div class="li-sub"><span class="mono">${esc(o.number)}</span> · gültig bis ${date(o.valid_until)}</div></div><b class="num">${money(o.gross)}</b></a>`).join('')}</div></div></div>` : ''}
+
 					${d.drafts.length ? `<div class="card"><div class="card-head"><h2>Entwürfe</h2></div><div class="card-body" style="padding-top:4px"><div class="list">${d.drafts.map((i) => `
-						<a class="list-item" href="#/rechnung/${i.id}"><div class="li-main"><div class="li-title">${withRec(esc(i.recipient.name || 'Ohne Empfänger'), i.is_recurring)}</div><div class="li-sub">zuletzt ${date(i.updated_at)}</div></div><b class="num">${money(i.gross)}</b></a>`).join('')}</div></div></div>` : ''}
+						<a class="list-item" href="#/${i.kind === 'offer' ? 'angebot' : 'rechnung'}/${i.id}"><div class="li-main"><div class="li-title">${withRec(esc(i.recipient.name || 'Ohne Empfänger'), i.is_recurring)}</div><div class="li-sub">${i.kind === 'offer' ? 'Angebot' : 'Rechnung'} · zuletzt ${date(i.updated_at)}</div></div><b class="num">${money(i.gross)}</b></a>`).join('')}</div></div></div>` : ''}
 
 					<div class="card">
 						<div class="card-head"><h2>Umsatz pro Jahr</h2></div>
@@ -640,18 +697,21 @@
 
 	/* ---------------------------------------------------------------- Rechnung: Ansicht oder Editor */
 
-	async function viewInvoice(id, q) {
+	async function viewInvoice(id, q, kind = 'invoice') {
 		if (!id) {
 			const c = q.kunde ? customerById(q.kunde) : null;
+			const offer = kind === 'offer';
 			return invoiceEditor({
+				kind, valid_until: offer ? addDays(S.today, +S.settings.offer_days || 30) : null,
 				id: 0, customer_id: c ? +c.id : null, recipient: c ? { name: c.name, number: c.number, lines: c.lines || [], email: c.email } : { name: '', number: '', lines: [], email: '' },
 				invoice_date: S.today, payment_days: c && c.payment_days !== null && c.payment_days !== '' ? +c.payment_days : +S.settings.payment_days,
-				service_date: S.today, period_from: null, period_to: null, subject: '', greeting: '', intro: S.settings.intro, outro: S.settings.outro, note: '',
+				service_date: S.today, period_from: null, period_to: null, subject: '', greeting: '', intro: offer ? S.settings.offer_intro : S.settings.intro, outro: offer ? S.settings.offer_outro : S.settings.outro, note: '',
 				items: [{ sku: '', name: '', description: '', qty: 1, unit: '', price: 0, discount: 0 }], status: 'draft', _new: true, _fromCustomer: !!c,
 			});
 		}
 		const inv = await api('invoice', undefined, { query: { id } });
-		return inv.status === 'draft' ? invoiceEditor(inv) : invoiceDetail(inv);
+		if (inv.status === 'draft') return invoiceEditor(inv);
+		return inv.kind === 'offer' ? offerDetail(inv) : invoiceDetail(inv);
 	}
 
 	function invoiceDetail(inv) {
@@ -689,6 +749,7 @@
 							<div><dt>Kunden Nr.</dt><dd class="mono">${esc(inv.recipient.number || '—')}</dd></div>
 							${inv.ref ? `<div><dt>Storno zu</dt><dd><a href="#/rechnung/${inv.ref.id}">${esc(inv.ref.number)}</a></dd></div>` : ''}
 							${inv.storno ? `<div><dt>Storniert mit</dt><dd><a href="#/rechnung/${inv.storno.id}">${esc(inv.storno.number)}</a></dd></div>` : ''}
+							${inv.from_offer ? `<div><dt>Aus Angebot</dt><dd><a href="#/angebot/${inv.from_offer.id}" class="mono">${esc(inv.from_offer.number)}</a></dd></div>` : ''}
 						</dl>
 					</div>
 					<div class="card" style="overflow:hidden">
@@ -769,7 +830,7 @@
 		let pre;
 		try { pre = await api('mail_preview', undefined, { query: { id: inv.id, type } }); } catch (e) { return fail(e); }
 		const email = $('#email')?.value || pre.to;
-		const el = drawer(type === 'reminder' ? 'Zahlungserinnerung senden' : 'Rechnung per E-Mail senden', `
+		const el = drawer(type === 'reminder' ? 'Zahlungserinnerung senden' : inv.kind === 'offer' ? 'Angebot per E-Mail senden' : 'Rechnung per E-Mail senden', `
 			${pre.configured ? '' : `<div class="note-warn" style="margin-bottom:14px">${icon('alert')}<span>Der E-Mail-Versand ist noch nicht eingerichtet (SMTP in <code>config.php</code>, siehe Einstellungen → E-Mail). Du kannst die Mail stattdessen im eigenen Mailprogramm öffnen.</span></div>`}
 			<div class="form-grid">
 				<label class="field c6"><span>An</span><input type="text" name="to" value="${esc(email)}" placeholder="kunde@example.com" autofocus></label>
@@ -851,6 +912,9 @@
 	function invoiceEditor(inv) {
 		const main = $('#main');
 		const ed = JSON.parse(JSON.stringify(inv));
+		ed.kind = ed.kind === 'offer' ? 'offer' : 'invoice';
+		const isOffer = ed.kind === 'offer';
+		const docPath = isOffer ? '#/angebot/' : '#/rechnung/';
 		ed.items = ed.items.length ? ed.items : [blankItem()];
 		if (!ed.items.length) ed.items.push(blankItem());
 		let mode = ed.period_from ? 'period' : 'date';
@@ -859,7 +923,7 @@
 		const showPreview = window.matchMedia('(min-width: 861px)');
 
 		main.innerHTML = `<div class="page page-editor">
-			${pageHead(ed.id ? 'Entwurf bearbeiten' : 'Neue Rechnung', { back: ['#/rechnungen', 'Rechnungen'], sub: `Bekommt beim Ausstellen die Nummer <span class="mono">${esc(S.next_number)}</span>` },
+			${pageHead(isOffer ? (ed.id ? 'Angebot bearbeiten' : 'Neues Angebot') : (ed.id ? 'Entwurf bearbeiten' : 'Neue Rechnung'), { back: isOffer ? ['#/angebote', 'Angebote'] : ['#/rechnungen', 'Rechnungen'], sub: `Bekommt beim Ausstellen die Nummer <span class="mono">${esc(isOffer ? S.next_offer : S.next_number)}</span>` },
 				`${ed.id ? `<button class="btn ghost danger" data-delete>${icon('trash')}<span class="hide-m">Löschen</span></button>` : ''}
 				<button class="btn show-m" data-preview-m>${icon('eye')}</button>
 				<button class="btn" data-save>Speichern</button>
@@ -872,7 +936,8 @@
 							<label class="field c2 m-full"><span>Rechnungsdatum</span><input type="date" name="invoice_date" value="${ed.invoice_date}"></label>
 							<label class="field c3 m-full"><span>Anschrift <small>(eine Zeile pro Feld)</small></span><textarea id="lines" rows="5">${esc((ed.recipient.lines || []).join('\n'))}</textarea></label>
 							<div class="c3 m-full" style="display:flex;flex-direction:column;gap:12px">
-								<label class="field"><span>Zahlungsziel</span><select name="payment_days">${[[0, 'sofort'], [7, '7 Tage'], [14, '14 Tage'], [21, '21 Tage'], [30, '30 Tage']].map(([v, l]) => `<option value="${v}" ${+ed.payment_days === v ? 'selected' : ''}>${l}</option>`).join('')}${[0, 7, 14, 21, 30].includes(+ed.payment_days) ? '' : `<option value="${ed.payment_days}" selected>${ed.payment_days} Tage</option>`}</select></label>
+								${isOffer ? `<label class="field"><span>Gültig bis</span><input type="date" name="valid_until" value="${ed.valid_until || ''}"></label>` : ''}
+								<label class="field"><span>Zahlungsziel${isOffer ? ' <small>(bei Auftrag)</small>' : ''}</span><select name="payment_days">${[[0, 'sofort'], [7, '7 Tage'], [14, '14 Tage'], [21, '21 Tage'], [30, '30 Tage']].map(([v, l]) => `<option value="${v}" ${+ed.payment_days === v ? 'selected' : ''}>${l}</option>`).join('')}${[0, 7, 14, 21, 30].includes(+ed.payment_days) ? '' : `<option value="${ed.payment_days}" selected>${ed.payment_days} Tage</option>`}</select></label>
 								<div class="field"><span style="display:flex;justify-content:space-between;align-items:center">Leistung <span class="seg" id="svcmode"><button type="button" data-m="date">Datum</button><button type="button" data-m="period">Zeitraum</button></span></span>
 									<div id="svc"></div></div>
 							</div>
@@ -894,6 +959,12 @@
 							<label class="field c6"><span>Interne Notiz <small>(nicht auf der Rechnung)</small></span><textarea name="note" rows="2">${esc(ed.note)}</textarea></label>
 						</div>
 					</div>
+
+					<div class="card card-pad shrink">
+						<label class="switch"><input type="checkbox" id="shrink"> Schrumpfen</label>
+						<span class="muted shrink-info" id="shrinkinfo"></span>
+						<button type="button" class="btn sm ghost" id="shrinkauto">Automatisch</button>
+					</div>
 				</div>
 				<section class="card preview" aria-label="Live-Vorschau">
 					<div class="preview-head"><span class="dot" id="pdot"></span><span style="flex:1">Live-Vorschau – aktualisiert sich beim Tippen</span><button class="btn sm" data-preview-open>${icon('eye')} In neuem Tab</button></div>
@@ -903,6 +974,21 @@
 		</div>`;
 
 		const touch = () => { view.dirty = true; drawTotals(); schedulePreview(); };
+
+		/* Schrumpfen: automatisch, solange der Haken nicht von Hand gesetzt wurde */
+		ed.compact = ed.compact || 'auto';
+		let autoLevel = 0;
+		const drawShrink = () => {
+			const on = ed.compact === 'on' || (ed.compact === 'auto' && autoLevel > 0);
+			$('#shrink').checked = on;
+			$('#shrinkinfo').textContent = ed.compact === 'auto'
+				? (autoLevel > 0 ? 'automatisch an – kleinere Positionszeilen, damit kein unnötiger Seitenumbruch entsteht' : 'automatisch – wird gesetzt, sobald sonst eine fast leere Seite entstünde')
+				: ed.compact === 'on' ? 'von Hand an – Positionszeilen kleiner' : 'von Hand aus – normale Größe';
+			$('#shrinkauto').classList.toggle('hide', ed.compact === 'auto');
+		};
+		$('#shrink').onchange = (e) => { ed.compact = e.target.checked ? 'on' : 'off'; drawShrink(); touch(); };
+		$('#shrinkauto').onclick = () => { ed.compact = 'auto'; drawShrink(); touch(); };
+		drawShrink();
 		const drawSvc = () => {
 			$$('#svcmode button').forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
 			$('#svc').innerHTML = mode === 'date'
@@ -974,8 +1060,10 @@
 			previewBusy = true;
 			$('#pdot')?.classList.add('busy');
 			try {
-				const blob = await api('preview', payload(), { blob: true });
-				const url = URL.createObjectURL(blob);
+				const res = await api('preview', payload(), { blob: true, headers: true });
+				autoLevel = +(res.headers.get('X-NW-Compact') || 0);
+				drawShrink();
+				const url = URL.createObjectURL(res.blob);
 				const fr = $('#pframe');
 				if (!fr) return;
 				fr.src = url + '#view=FitH&toolbar=0&navpanes=0';
@@ -1004,7 +1092,7 @@
 			ed.id = saved.id;
 			await refresh();
 			if (!quiet) toast('Entwurf gespeichert');
-			if (!inv.id) { history.replaceState(null, '', '#/rechnung/' + saved.id); lastHash = location.hash; }
+			if (!inv.id) { history.replaceState(null, '', docPath + saved.id); lastHash = location.hash; }
 			return saved;
 		};
 		$('[data-save]').onclick = () => save().catch(fail);
@@ -1012,7 +1100,9 @@
 			if (!ed.customer_id && !(ed.recipient.lines || []).length) return fail(new Error('Bitte einen Kunden wählen.'));
 			const total = itemsTotal(ed.items);
 			const email = ed.recipient.email || customerById(ed.customer_id)?.email || '';
-			const r = await confirmDialog('Rechnung ausstellen?', `Die Rechnung bekommt die Nummer <b>${esc(S.next_number)}</b> und kann danach nicht mehr geändert werden. Betrag: <b>${money(total)}</b>.`, 'Ausstellen', {
+			const r = await confirmDialog(isOffer ? 'Angebot ausstellen?' : 'Rechnung ausstellen?', isOffer
+				? `Das Angebot bekommt die Nummer <b>${esc(S.next_offer)}</b>. Summe: <b>${money(total)}</b>, gültig bis ${date(ed.valid_until)}.`
+				: `Die Rechnung bekommt die Nummer <b>${esc(S.next_number)}</b> und kann danach nicht mehr geändert werden. Betrag: <b>${money(total)}</b>.`, 'Ausstellen', {
 				extra: S.mail.configured && email ? `<label class="switch" style="margin-top:14px"><input type="checkbox" name="send" checked> Danach per E-Mail an ${esc(email)} senden</label>` : '',
 			});
 			if (!r) return;
@@ -1021,20 +1111,141 @@
 				const issued = await api('invoice_issue', { id: saved.id });
 				await refresh();
 				view.dirty = false;
-				go('#/rechnung/' + issued.id);
-				toast('Rechnung ' + issued.number + ' ausgestellt');
+				go(docPath + issued.id);
+				toast((isOffer ? 'Angebot ' : 'Rechnung ') + issued.number + ' ausgestellt');
 				if (r.send) setTimeout(() => mailDialog(issued, 'invoice', async (u) => { await refresh(); route(); }), 400);
 			} catch (e) { fail(e); }
 		};
 		$('[data-delete]', main)?.addEventListener('click', async () => {
 			if (!await confirmDialog('Entwurf löschen?', 'Der Entwurf wird endgültig gelöscht.', 'Löschen', { danger: true })) return;
-			try { await api('invoice_delete', { id: ed.id }); view.dirty = false; await refresh(); go('#/rechnungen'); toast('Entwurf gelöscht'); } catch (e) { fail(e); }
+			try { await api('invoice_delete', { id: ed.id }); view.dirty = false; await refresh(); go(isOffer ? '#/angebote' : '#/rechnungen'); toast('Entwurf gelöscht'); } catch (e) { fail(e); }
 		});
 		const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); save().catch(fail); } };
 		document.addEventListener('keydown', onKey);
 		view.cleanup = () => { document.removeEventListener('keydown', onKey); if (previewUrl) URL.revokeObjectURL(previewUrl); };
 		if (!ed.customer_id) setTimeout(() => $('#cust')?.focus(), 50);
 		return view;
+	}
+
+	/* ================================================================ Angebote */
+
+	async function viewOffers(q) {
+		const main = $('#main');
+		let f = q.f || store.get('off.f', 'all');
+		let search = '';
+		const filters = [['all', 'Alle'], ['draft', 'Entwürfe'], ['sent', 'Offen'], ['accepted', 'Angenommen'], ['declined', 'Abgelehnt'], ['expired', 'Abgelaufen']];
+		main.innerHTML = `<div class="page">
+			${pageHead('Angebote', { sub: 'Angebote erstellen, nachverfolgen und mit einem Klick in eine Rechnung umwandeln' }, `<a class="btn primary" href="#/angebot/neu">${icon('plus')} Neues Angebot</a>`)}
+			<div class="toolbar"><div class="chips" id="chips"></div><div class="grow"></div>
+				<label class="search"><span class="sr">Suchen</span>${icon('search')}<input type="search" id="q" placeholder="Nummer, Kunde, Leistung …"></label></div>
+			<div class="card"><div class="table-wrap" id="list"></div></div></div>`;
+		const draw = () => {
+			store.set('off.f', f);
+			const all = S.offers || [];
+			$('#chips').innerHTML = filters.map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-f="${k}">${l} <span class="n">${k === 'all' ? all.length : all.filter((o) => o.state === k).length}</span></button>`).join('');
+			$$('#chips .chip').forEach((c) => (c.onclick = () => { f = c.dataset.f; draw(); }));
+			const n = norm(search);
+			const rows = all.filter((o) => (f === 'all' || o.state === f) && (!n || norm([o.number, o.recipient.name, o.item_names, o.subject].join(' ')).includes(n)));
+			const open = rows.filter((o) => o.state === 'sent').reduce((a, o) => a + o.gross, 0);
+			const won = rows.filter((o) => o.state === 'accepted').reduce((a, o) => a + o.gross, 0);
+			$('#list').innerHTML = rows.length ? `<table class="table resp"><thead><tr><th>Nr.</th><th>Kunde</th><th class="hide-m">Datum</th><th class="hide-m">Gültig bis</th><th>Status</th><th class="th-r">Summe</th></tr></thead><tbody>
+				${rows.map((o) => `<tr class="click" data-id="${o.id}">
+					<td class="m-hide mono">${esc(o.number || '—')}</td>
+					<td class="m-b strong"><div>${withRec(esc(o.recipient.name || 'Ohne Empfänger'), false)}</div><div class="sub">${esc(o.subject || o.item_names || '')}</div></td>
+					<td class="m-c muted nowrap"><span class="show-m mono">${esc(o.number || 'Entwurf')} · </span>${date(o.invoice_date)}</td>
+					<td class="m-hide muted nowrap">${date(o.valid_until) || '—'}</td>
+					<td class="m-e">${badge(o.state)}${o.converted_id ? ` <span class="muted" title="In Rechnung umgewandelt">${icon('file')}</span>` : ''}</td>
+					<td class="m-d td-r num strong">${money(o.gross)}</td></tr>`).join('')}</tbody></table>
+				<div class="sumbar"><span>${rows.length} Angebote</span>${open ? `<span>offen <b class="num">${money(open)}</b></span>` : ''}${won ? `<span>angenommen <b class="num">${money(won)}</b></span>` : ''}</div>`
+				: `<div class="empty"><span class="big">[ ]</span>Noch keine Angebote. <a href="#/angebot/neu">Erstes Angebot erstellen</a></div>`;
+			$$('#list tr[data-id]').forEach((tr) => (tr.onclick = () => go('#/angebot/' + tr.dataset.id)));
+		};
+		$('#q').oninput = debounce((e) => { search = e.target.value; draw(); }, 120);
+		draw();
+	}
+
+	function offerDetail(inv) {
+		const main = $('#main');
+		const s = inv.state;
+		const pdfUrl = 'api.php?a=pdf&id=' + inv.id;
+		const title = 'Angebot ' + inv.number;
+		main.innerHTML = `<div class="page">
+			${pageHead(esc(title), { back: ['#/angebote', 'Angebote'], crumbs: inv.customer ? [['#/kunde/' + inv.customer.id, inv.recipient.name]] : [] },
+				`<a class="btn" href="${pdfUrl}&dl=1">${icon('download')}<span class="hide-m">PDF</span></a>
+				<button class="btn" data-share>${icon('share')}<span class="hide-m">Teilen</span></button>
+				<button class="btn ${inv.sent_at ? '' : 'primary'}" data-mail>${icon('send')} ${inv.sent_at ? 'Erneut senden' : 'Per E-Mail senden'}</button>`)}
+			<div class="grid g-main">
+				<div class="grid" style="align-content:start">
+					<div class="card">
+						<div class="status-hero">
+							<div class="grow"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">${badge(s)}
+								${inv.sent_at ? `<span class="badge plain">${icon('mail')} versendet ${date(inv.sent_at)}</span>` : ''}</div>
+								<div class="amount num">${money(inv.gross)}</div>
+								<div class="muted">${esc(inv.recipient.name)} · ${date(inv.invoice_date)}</div></div>
+							<div class="btns">
+								${inv.converted ? `<a class="btn primary" href="#/rechnung/${inv.converted.id}">${icon('file')} Zur Rechnung ${esc(inv.converted.number || '(Entwurf)')}</a>`
+									: `<button class="btn primary" data-convert>${icon('file')} In Rechnung umwandeln</button>`}
+								${s === 'sent' || s === 'expired' ? `<button class="btn" data-state="accepted">${icon('check')} Angenommen</button><button class="btn" data-state="declined">${icon('x')} Abgelehnt</button>` : ''}
+								${(s === 'accepted' || s === 'declined') && !inv.converted ? `<button class="btn" data-state="open">Wieder offen</button>` : ''}
+							</div>
+						</div>
+						<dl class="facts">
+							<div><dt>Angebotsdatum</dt><dd>${date(inv.invoice_date)}</dd></div>
+							<div><dt>Gültig bis</dt><dd>${date(inv.valid_until) || '—'}${s === 'expired' ? ' <span class="badge b-expired">abgelaufen</span>' : ''}</dd></div>
+							<div><dt>Zahlungsziel bei Auftrag</dt><dd>${inv.payment_days > 0 ? inv.payment_days + ' Tage' : 'sofort'}</dd></div>
+							<div><dt>Kunden Nr.</dt><dd class="mono">${esc(inv.recipient.number || '—')}</dd></div>
+						</dl>
+					</div>
+					<div class="card" style="overflow:hidden">
+						<div class="preview-head">${icon('offer')} <span style="flex:1">${esc(title)}.pdf</span><a class="btn sm" href="${pdfUrl}" target="_blank" rel="noopener">${icon('eye')} In neuem Tab</a></div>
+						<iframe class="pdf-frame" src="${pdfUrl}#view=FitH&navpanes=0" title="Angebot als PDF"></iframe>
+					</div>
+				</div>
+				<div class="grid" style="align-content:start">
+					<div class="card card-pad">
+						<h3 style="margin-bottom:10px">Empfänger</h3>
+						<div style="line-height:1.55">${inv.recipient.lines.map((l, i) => i === 0 ? `<b>${esc(l)}</b>` : esc(l)).join('<br>')}</div>
+						<label class="field" style="margin-top:14px"><span>E-Mail für den Versand</span><input type="email" id="email" value="${esc(inv.recipient.email || inv.customer?.email || '')}" placeholder="kunde@example.com"></label>
+					</div>
+					<div class="card card-pad">
+						<h3 style="margin-bottom:10px">Aktionen</h3>
+						<div class="btns" style="flex-direction:column;align-items:stretch">
+							<button class="btn" data-dup>${icon('copy')} Als neues Angebot kopieren</button>
+							${!inv.sent_at ? `<button class="btn ghost" data-marksent>${icon('check')} Als versendet markieren</button>` : ''}
+						</div>
+						<p class="muted" style="font-size:12.5px;margin-top:12px">„In Rechnung umwandeln“ legt einen Rechnungsentwurf mit denselben Positionen an und markiert das Angebot als angenommen.</p>
+					</div>
+					<div class="card card-pad">
+						<h3 style="margin-bottom:10px">Interne Notiz</h3>
+						<textarea id="note" rows="3" placeholder="Nur für dich – erscheint nicht auf dem Angebot">${esc(inv.note || '')}</textarea>
+					</div>
+					<div class="card card-pad">
+						<h3 style="margin-bottom:12px">Verlauf</h3>
+						<div class="timeline">${inv.activity.map((a) => `<div class="tl"><div>${esc(a.text)}<div class="when">${relTime(a.created_at)}</div></div></div>`).join('') || '<span class="muted">—</span>'}</div>
+					</div>
+				</div>
+			</div>
+		</div>`;
+		const reload = async (u) => { await refresh(); offerDetail(u || await api('invoice', undefined, { query: { id: inv.id } })); };
+		const saveMeta = debounce(async () => { try { await api('invoice_save', { id: inv.id, note: $('#note').value, recipient: { email: $('#email').value } }); } catch (e) { fail(e); } }, 600);
+		$('#note').oninput = saveMeta;
+		$('#email').oninput = saveMeta;
+		$$('[data-state]', main).forEach((b) => (b.onclick = async () => {
+			try {
+				const u = await api('offer_state', { id: inv.id, state: b.dataset.state });
+				if (b.dataset.state === 'accepted' && await confirmDialog('Angebot angenommen', 'Gleich eine Rechnung daraus erstellen? Du kannst sie vor dem Ausstellen noch anpassen.', 'Rechnung erstellen')) {
+					const r = await api('offer_convert', { id: inv.id }); await refresh(); go('#/rechnung/' + r.id); toast('Rechnungsentwurf aus Angebot erstellt'); return;
+				}
+				reload(u);
+			} catch (e) { fail(e); }
+		}));
+		$('[data-convert]', main)?.addEventListener('click', async () => {
+			try { const r = await api('offer_convert', { id: inv.id }); await refresh(); go('#/rechnung/' + r.id); toast('Rechnungsentwurf aus Angebot erstellt'); } catch (e) { fail(e); }
+		});
+		$('[data-dup]', main).onclick = async () => { try { const n = await api('invoice_duplicate', { id: inv.id }); await refresh(); go('#/angebot/' + n.id); toast('Kopie als Entwurf angelegt'); } catch (e) { fail(e); } };
+		$('[data-marksent]', main)?.addEventListener('click', async () => { try { reload(await api('invoice_mark_sent', { id: inv.id })); } catch (e) { fail(e); } });
+		$('[data-mail]', main).onclick = () => mailDialog(inv, 'invoice', reload);
+		$('[data-share]', main).onclick = () => sharePdf(pdfUrl, title, inv);
 	}
 
 	/* ================================================================ Kunden */
@@ -1077,7 +1288,7 @@
 		issued.forEach((i) => { const y = i.invoice_date.slice(0, 4); years[y] = (years[y] || 0) + i.gross; });
 		main.innerHTML = `<div class="page">
 			${pageHead(esc(c.name), { back: ['#/kunden', 'Kunden'], sub: `Kundennummer <span class="mono">${esc(c.number)}</span>${+c.archived ? ' – archiviert' : ''}` },
-				`<button class="btn" data-edit>${icon('edit')} Bearbeiten</button><button class="btn" data-rec>${icon('repeat')}<span class="hide-m">Dauerrechnung</span></button><a class="btn primary" href="#/rechnung/neu?kunde=${c.id}">${icon('plus')} Rechnung</a>`)}
+				`<button class="btn" data-edit>${icon('edit')} Bearbeiten</button><button class="btn" data-rec>${icon('repeat')}<span class="hide-m">Dauerrechnung</span></button><a class="btn" href="#/angebot/neu?kunde=${c.id}">${icon('offer')}<span class="hide-m">Angebot</span></a><a class="btn primary" href="#/rechnung/neu?kunde=${c.id}">${icon('plus')} Rechnung</a>`)}
 			<div class="grid g4 kpis" style="margin-bottom:16px">
 				<div class="card kpi"><div class="label">Umsatz gesamt</div><div class="value num">${moneyShort(revenue)}</div><div class="sub">${issued.filter((i) => i.kind === 'invoice').length} Rechnungen</div></div>
 				<div class="card kpi"><div class="label">Offen</div><div class="value num">${money(open.reduce((a, i) => a + i.gross, 0))}</div><div class="sub">${open.length} Rechnung${open.length === 1 ? '' : 'en'}</div></div>
@@ -1102,6 +1313,8 @@
 						</div>
 						${c.note ? `<div class="hint" style="margin-top:14px;white-space:pre-wrap">${esc(c.note)}</div>` : ''}
 					</div>
+					${c.offers.length ? `<div class="card"><div class="card-head"><h2>Angebote</h2></div><div class="card-body" style="padding-top:4px"><div class="list">${c.offers.map((o) => `
+						<a class="list-item" href="#/angebot/${o.id}"><div class="li-main"><div class="li-title"><span class="mono">${esc(o.number || 'Entwurf')}</span> · ${date(o.invoice_date)}</div><div class="li-sub">${esc(o.subject || o.item_names || '')}</div></div>${badge(o.state)}<b class="num">${money(o.gross)}</b></a>`).join('')}</div></div></div>` : ''}
 					<div class="card"><div class="card-head"><h2>Dauerrechnungen</h2></div><div class="card-body" style="padding-top:4px">${c.recurring.length ? `<div class="list">${c.recurring.map((r) => `
 						<a class="list-item" href="#/dauerrechnungen?id=${r.id}" style="${+r.active ? '' : 'opacity:.55'}"><div class="li-main"><div class="li-title">${esc(r.title || 'Dauerrechnung')}</div><div class="li-sub">${INTERVALS[r.interval_months]} · nächste ${date(r.next_date)}${+r.active ? '' : ' · pausiert'}</div></div><b class="num">${money(r.gross)}</b></a>`).join('')}</div>` : '<div class="empty">Keine.</div>'}</div></div>
 					${Object.keys(years).length ? `<div class="card"><div class="card-head"><h2>Umsatz pro Jahr</h2></div><div class="card-body">${yearBars(Object.entries(years).sort().map(([y, r]) => ({ y, revenue: r, n: 0 })))}</div></div>` : ''}
@@ -1143,6 +1356,7 @@
 				${isNew ? '' : `<label class="switch c6"><input type="checkbox" name="archived" ${+c.archived ? 'checked' : ''}> Archiviert (ausgeblendet, Rechnungen bleiben)</label>`}
 			</form>`,
 			`${isNew ? '' : `<button class="btn ghost danger" data-del>${icon('trash')} Löschen</button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`);
+		plzAssist($('[name=zip]', el), $('[name=city]', el), $('[name=country]', el));
 		const submit = async () => {
 			const fd = Object.fromEntries(new FormData($('#cf', el)));
 			fd.archived = $('[name=archived]', el)?.checked ? 1 : 0;
@@ -1401,7 +1615,7 @@
 	function viewMore() {
 		$('#main').innerHTML = `<div class="page">${pageHead('Mehr')}
 			<div class="card"><div class="card-body"><div class="list">
-				${[['#/dauerrechnungen', 'repeat', 'Dauerrechnungen', S.recurring.filter((r) => +r.active).length + ' aktiv'], ['#/artikel', 'box', 'Artikel', S.products.filter((p) => !+p.archived).length + ' Leistungen'], ['#/ausgaben', 'wallet', 'Ausgaben', 'Belege erfassen'], ['#/einstellungen', 'cog', 'Einstellungen', 'Firma, Texte, E-Mail, Sicherung']]
+				${[['#/angebote', 'offer', 'Angebote', (S.offers || []).filter((o) => o.state === 'sent').length + ' offen'], ['#/dauerrechnungen', 'repeat', 'Dauerrechnungen', S.recurring.filter((r) => +r.active).length + ' aktiv'], ['#/artikel', 'box', 'Artikel', S.products.filter((p) => !+p.archived).length + ' Leistungen'], ['#/ausgaben', 'wallet', 'Ausgaben', 'Belege erfassen'], ['#/einstellungen', 'cog', 'Einstellungen', 'Firma, Texte, E-Mail, Sicherung']]
 					.map(([h, i, l, s]) => `<a class="list-item" href="${h}">${icon(i)}<div class="li-main"><div class="li-title">${l}</div><div class="li-sub">${s}</div></div>${icon('right')}</a>`).join('')}
 				<a class="list-item" href="#/mehr" data-theme-btn="label">${icon(themeIcon())}<span>Design: ${{ auto: 'Automatisch', light: 'Hell', dark: 'Dunkel' }[store.get('theme', 'auto')]}</span></a>
 				<a class="list-item" href="#/mehr" data-logout2>${icon('logout')}<div class="li-main"><div class="li-title">Abmelden</div></div></a>
@@ -1419,20 +1633,26 @@
 		const f = (k, label, opts = {}) => `<label class="field ${opts.c || 'c3'}"><span>${label}${opts.small ? ` <small>${opts.small}</small>` : ''}</span>${opts.area ? `<textarea name="${k}" rows="${opts.rows || 3}">${esc(s[k])}</textarea>` : `<input type="${opts.type || 'text'}" name="${k}" value="${esc(s[k])}" ${opts.attr || ''}>`}</label>`;
 		const base = new URL('.', location.href).href;
 		const body = {
-			firma: `<div class="form-grid">${f('company', 'Name / Firma')}${f('tagline', 'Zusatz', { small: 'unter dem Namen' })}${f('owner', 'Inhaber', { small: 'für Grußformel' })}${f('street', 'Straße')}${f('zip', 'PLZ', { c: 'c1' })}${f('city', 'Ort', { c: 'c2' })}${f('phone', 'Telefon')}${f('email', 'E-Mail', { type: 'email' })}${f('web', 'Website')}${f('vat_id', 'UID-Nummer', { small: 'falls vorhanden' })}${f('tax_number', 'Steuernummer')}</div>
-				<div class="hint" style="margin-top:16px">Das Logo auf der Rechnung kommt als Vektorgrafik aus <code>assets/logo.svg</code> (bzw. <code>lib/logo-path.php</code>).</div>`,
+			firma: `<div class="logo-edit">
+					<div class="logo-preview" id="logoprev">${LOGO()}</div>
+					<div class="btns"><label class="btn">${icon('download')} Logo hochladen (SVG)<input type="file" id="logofile" accept=".svg,image/svg+xml" hidden></label>${($('#logo-svg')?.textContent || '').trim() ? `<button type="button" class="btn ghost danger" data-logodel>${icon('trash')} Entfernen</button>` : ''}</div>
+					<p class="muted" style="font-size:12.5px">Erscheint links oben auf jeder Rechnung und in der Seitenleiste. SVG mit Formen/Pfaden, Texte bitte in Pfade umwandeln. Ohne Logo steht dort der Firmenname.</p>
+				</div>
+				<div class="form-grid">${f('company', 'Name / Firma')}${f('tagline', 'Zusatz', { small: 'unter dem Namen' })}${f('owner', 'Inhaber', { small: 'für Grußformel' })}${f('street', 'Straße')}${f('zip', 'PLZ', { c: 'c1' })}${f('city', 'Ort', { c: 'c2' })}${f('phone', 'Telefon')}${f('email', 'E-Mail', { type: 'email' })}${f('web', 'Website')}${f('vat_id', 'UID-Nummer', { small: 'falls vorhanden' })}${f('tax_number', 'Steuernummer')}</div>`,
 			bank: `<div class="form-grid">${f('bank', 'Bank', { small: 'optional' })}${f('bank_owner', 'Kontoinhaber')}${f('iban', 'IBAN', { c: 'c4' })}${f('bic', 'BIC', { c: 'c2' })}${f('payment_days', 'Zahlungsziel Standard (Tage)', { type: 'number', attr: 'min="0"' })}
 				<label class="field c3"><span>Zahlschein auf der Rechnung</span><select name="pay_box">${[['qr', 'Mit QR-Code für Banking-Apps'], ['plain', 'Nur Bankdaten'], ['off', 'Kein Zahlschein']].map(([k, l]) => `<option value="${k}" ${s.pay_box === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
 				<div class="hint" style="margin-top:16px">Der QR-Code ist ein EPC-„GiroCode“: Kunden scannen ihn mit der Banking-App, Empfänger, IBAN, Betrag und Rechnungsnummer sind dann schon ausgefüllt.</div>`,
 			texte: `<div class="form-grid">${f('greeting', 'Standard-Anrede', { c: 'c6', small: 'wenn keine Person hinterlegt ist' })}${f('intro', 'Einleitung', { c: 'c6', area: true, rows: 2 })}${f('outro', 'Schlusstext', { c: 'c6', area: true, rows: 2 })}${f('footer_note', 'Hinweis auf jeder Rechnung', { c: 'c6', area: true, rows: 2 })}
 				<div class="section-title c6">E-Mail-Vorlagen</div>
 				${f('mail_subject', 'Betreff Rechnung', { c: 'c6' })}${f('mail_body', 'Text Rechnung', { c: 'c6', area: true, rows: 9 })}${f('remind_subject', 'Betreff Zahlungserinnerung', { c: 'c6' })}${f('remind_body', 'Text Zahlungserinnerung', { c: 'c6', area: true, rows: 8 })}
-				<div class="c6 hint">Platzhalter: <code>{ANREDE}</code> <code>{NUMMER}</code> <code>{DATUM}</code> <code>{BETRAG}</code> <code>{OFFEN}</code> <code>{FAELLIG}</code> <code>{ZAHLUNG}</code> <code>{ZEITRAUM}</code> <code>{KUNDE}</code> <code>{FIRMA}</code> <code>{INHABER}</code></div></div>`,
+				<div class="section-title c6">Angebote</div>
+				${f('offer_intro', 'Einleitung Angebot', { c: 'c6', area: true, rows: 2 })}${f('offer_outro', 'Schlusstext Angebot', { c: 'c6', area: true, rows: 2 })}${f('offer_subject', 'Betreff Angebot', { c: 'c6' })}${f('offer_body', 'Text Angebot', { c: 'c6', area: true, rows: 8 })}
+				<div class="c6 hint">Platzhalter: <code>{ANREDE}</code> <code>{NUMMER}</code> <code>{DATUM}</code> <code>{BETRAG}</code> <code>{OFFEN}</code> <code>{FAELLIG}</code> <code>{ZAHLUNG}</code> <code>{ZEITRAUM}</code> <code>{KUNDE}</code> <code>{FIRMA}</code> <code>{INHABER}</code> <code>{GUELTIG}</code> (Angebot)</div></div>`,
 			mail: `${S.mail.configured ? `<div class="note-ok">${icon('check')}<span>E-Mail-Versand eingerichtet: <b>${esc(S.mail.from)}</b> über ${esc(S.mail.host)}${S.mail.bcc ? ` · Kopie an ${esc(S.mail.bcc)}` : ''}</span></div>`
 				: `<div class="note-warn">${icon('alert')}<span>Noch kein SMTP eingerichtet – Rechnungen können noch nicht automatisch verschickt werden.</span></div>`}
 				<h3 style="margin:22px 0 8px">So wird der Versand eingerichtet (empfohlen)</h3>
 				<ol style="margin:0;padding-left:20px;line-height:1.75;color:var(--ink-2)">
-					<li>Beim Webhoster ein eigenes Postfach anlegen, z. B. <b>rechnung@norbertwinter.at</b>. Dann passen SPF/DKIM zur Absenderadresse und die Rechnungen landen nicht im Spam.</li>
+					<li>Beim Webhoster ein eigenes Postfach anlegen, z. B. <b>rechnung@deine-domain.at</b>. Dann passen SPF/DKIM zur Absenderadresse und die Rechnungen landen nicht im Spam.</li>
 					<li><code class="code">config.sample.php</code> nach <code class="code">config.php</code> kopieren und SMTP-Daten eintragen: Server, Port <b>465</b> mit <code class="code">ssl</code> (oder 587 mit <code class="code">tls</code>), Benutzer, Passwort.</li>
 					<li>Das Passwort steht nur in der <code class="code">config.php</code>, nie in der Datenbank. Die Datei ist per <code class="code">.htaccess</code> gesperrt. Die Verbindung ist immer verschlüsselt und das Zertifikat wird geprüft.</li>
 					<li>Bei <code class="code">bcc</code> deine eigene Adresse eintragen, dann bekommst du von jeder Rechnung eine Kopie.</li>
@@ -1442,7 +1662,7 @@
 				<p class="muted" style="margin-bottom:10px">Beim Webhoster einen täglichen Cronjob anlegen (z. B. 7:00 Uhr). Er erstellt fällige Dauerrechnungen und verschickt sie.</p>
 				<div class="hint" style="display:flex;flex-direction:column;gap:8px"><div>Als Befehl: <code>php ${esc('/pfad/zu/rechnungen/cron.php')}</code></div><div>oder als URL: <code id="cronurl">${esc(base + S.cron_url)}</code> <button class="btn sm" data-copy>${icon('copy')} Kopieren</button></div>
 					<div>Zuletzt gelaufen: <b>${S.settings.cron_last ? date(S.settings.cron_last) + ' ' + S.settings.cron_last.slice(11, 16) : 'noch nie'}</b></div></div>`,
-			nummern: `<div class="form-grid">${f('next_number', 'Nächste Rechnungsnummer', { small: 'mindestens', attr: 'inputmode="numeric"' })}${f('next_customer', 'Nächste Kundennummer', { attr: 'inputmode="numeric"' })}${f('next_sku', 'Nächste Artikelnummer', { attr: 'inputmode="numeric"' })}
+			nummern: `<div class="form-grid">${f('next_number', 'Nächste Rechnungsnummer', { small: 'mindestens', attr: 'inputmode="numeric"' })}${f('next_customer', 'Nächste Kundennummer', { attr: 'inputmode="numeric"' })}${f('next_sku', 'Nächste Artikelnummer', { attr: 'inputmode="numeric"' })}${f('next_offer', 'Nächste Angebotsnummer', { small: 'ergibt A-…', attr: 'inputmode="numeric"' })}${f('offer_days', 'Angebote gültig (Tage)', { type: 'number', attr: 'min="1"' })}
 				<div class="section-title c6">Umsatzsteuer</div>
 				<label class="switch c6"><input type="checkbox" name="small_business" ${s.small_business === '1' ? 'checked' : ''}> Kleinunternehmer (keine Umsatzsteuer auf Rechnungen)</label>
 				${f('small_business_text', 'Hinweis auf der Rechnung', { c: 'c6' })}${f('revenue_limit', 'Umsatzgrenze (€)', { small: 'seit 2025: 55.000 € brutto' })}${f('default_tax', 'USt.-Satz Standard (%)', { small: 'falls nicht Kleinunternehmer' })}</div>
@@ -1461,6 +1681,16 @@
 			<nav class="tabs">${tabs.map(([k, l]) => `<a href="#/einstellungen/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</nav>
 			<form id="sf" class="card card-pad" autocomplete="off">${body}</form>
 			${['firma', 'bank', 'texte', 'nummern'].includes(tab) ? `<div class="btns" style="margin-top:14px;justify-content:flex-end"><button class="btn primary" data-save>Speichern</button></div>` : ''}</div>`;
+		if (tab === 'firma') plzAssist($('[name=zip]', main), $('[name=city]', main), null);
+		$('#logofile', main)?.addEventListener('change', async (e) => {
+			const fd = new FormData();
+			fd.append('logo', e.target.files[0]);
+			try { const r = await api('logo_upload', fd); $('#logo-svg').textContent = r.logo; toast('Logo gespeichert'); renderShell(); route(); } catch (er) { fail(er); }
+		});
+		$('[data-logodel]', main)?.addEventListener('click', async () => {
+			if (!await confirmDialog('Logo entfernen?', 'Auf Rechnungen steht dann der Firmenname.', 'Entfernen', { danger: true })) return;
+			try { await api('logo_delete', {}); $('#logo-svg').textContent = ''; renderShell(); route(); } catch (er) { fail(er); }
+		});
 		$('[data-save]', main)?.addEventListener('click', async () => {
 			const fd = Object.fromEntries(new FormData($('#sf')));
 			if (tab === 'nummern') fd.small_business = $('[name=small_business]').checked ? '1' : '0';
@@ -1530,7 +1760,7 @@
 		if ($('.palette')) return;
 		const el = openLayer(`<label class="search">${icon('search')}<input type="text" id="pq" placeholder="Suche Rechnung, Kunde, Artikel oder Aktion …" autocomplete="off" autofocus></label><div class="results" id="pres"></div>`, 'palette');
 		const actions = [
-			['Neue Rechnung', '#/rechnung/neu', 'plus'], ['Neuer Kunde', () => customerDrawer({}, (c) => go('#/kunde/' + c.id)), 'users'], ['Dauerrechnungen', '#/dauerrechnungen', 'repeat'],
+			['Neue Rechnung', '#/rechnung/neu', 'plus'], ['Neues Angebot', '#/angebot/neu', 'offer'], ['Offene Angebote', '#/angebote?f=sent', 'offer'], ['Neuer Kunde', () => customerDrawer({}, (c) => go('#/kunde/' + c.id)), 'users'], ['Dauerrechnungen', '#/dauerrechnungen', 'repeat'],
 			['Offene Rechnungen', '#/rechnungen?f=open', 'file'], ['Ausgabe erfassen', '#/ausgaben', 'wallet'], ['Einstellungen', '#/einstellungen', 'cog'], ['Datenbank sichern', () => (location.href = 'api.php?a=backup'), 'download'],
 		];
 		let items = [], idx = 0;
@@ -1545,8 +1775,11 @@
 					.map((c) => ({ html: `${icon('users')}<div class="grow"><div class="t">${esc(c.name)}</div><div class="s">${esc(c.person || '')} · ${esc(c.city || '')}</div></div>`, run: '#/kunde/' + c.id }));
 				const pro = S.products.filter((p) => norm(p.sku + ' ' + p.name).includes(n)).slice(0, 4)
 					.map((p) => ({ html: `<span class="mono">${esc(p.sku)}</span><div class="grow"><div class="t">${esc(p.name)}</div></div><b class="num">${money(p.price)}</b>`, run: () => { go('#/artikel'); setTimeout(() => productDrawer(p, () => route()), 50); } }));
+				const off = (S.offers || []).filter((o) => norm(o.number + ' ' + o.recipient.name + ' ' + o.item_names + ' ' + o.subject).includes(n)).slice(0, 4)
+					.map((o) => ({ html: `<span class="mono">${esc(o.number || 'Entwurf')}</span><div class="grow"><div class="t">${esc(o.recipient.name)}</div><div class="s">Angebot · ${date(o.invoice_date)}</div></div>${badge(o.state)}<b class="num">${money(o.gross)}</b>`, run: '#/angebot/' + o.id }));
 				if (cus.length) groups.push(['Kunden', cus]);
 				if (inv.length) groups.push(['Rechnungen', inv]);
+				if (off.length) groups.push(['Angebote', off]);
 				if (pro.length) groups.push(['Artikel', pro]);
 			}
 			if (acts.length) groups.push(['Aktionen', acts]);

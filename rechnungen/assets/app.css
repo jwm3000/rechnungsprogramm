@@ -135,7 +135,7 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .auth { display: grid; place-items: center; min-height: 100dvh; padding: 24px 16px; }
 .auth-card { width: 100%; max-width: 380px; background: var(--surface); border-radius: var(--radius); padding: 32px 28px 28px; box-shadow: var(--shadow); border: 1px solid var(--line); }
 .auth-card .logo { color: var(--ink); width: 210px; margin: 0 0 28px; }
-.auth-card .logo svg { width: 100%; height: auto; display: block; }
+.auth-card .logo svg { width: auto; max-width: 100%; max-height: 70px; height: auto; display: block; }
 .auth-card h1 { font-size: 18px; margin-bottom: 6px; }
 .auth-card p { color: var(--muted); margin-bottom: 18px; font-size: 13.5px; }
 .auth-card .btn { width: 100%; justify-content: center; margin-top: 14px; height: 44px; }
@@ -148,7 +148,11 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 }
 .side-head { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 22px; }
 .brand { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 2px 6px 0; color: var(--ink); text-decoration: none; }
-.brand-logo svg { width: 164px; height: auto; display: block; }
+.brand-logo svg { width: auto; max-width: 164px; max-height: 52px; height: auto; display: block; }
+.logo-text { font-size: 19px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; display: block; }
+.logo-edit { display: flex; flex-direction: column; gap: 12px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--line-2); }
+.logo-preview { color: #16171a; background: #fff; border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 18px; display: flex; align-items: center; min-height: 90px; }
+.logo-preview svg { max-width: 260px; max-height: 70px; width: auto; height: auto; }
 /* Programmname (nur Übersicht): eigener Kasten, zentriert, technische Schrift */
 .app-name {
 	margin: 0 0 26px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl);
@@ -327,6 +331,10 @@ a.list-item:hover .li-title { color: var(--accent); }
 .b-open { background: var(--accent-soft); color: var(--accent); }
 .b-overdue { background: var(--bad-soft); color: var(--bad); }
 .b-paid { background: var(--ok-soft); color: var(--ok); }
+.b-sent { background: var(--accent-soft); color: var(--ink); }
+.b-accepted { background: var(--ok-soft); color: var(--ok); }
+.b-declined { background: var(--line-2); color: var(--muted); }
+.b-expired { background: var(--warn-soft); color: var(--warn); }
 .b-cancelled, .b-storno { background: var(--line-2); color: var(--muted); text-decoration: none; }
 .b-warn { background: var(--warn-soft); color: var(--warn); }
 
@@ -338,6 +346,10 @@ a.list-item:hover .li-title { color: var(--accent); }
 	border: 1.5px solid var(--accent); color: var(--accent); background: var(--accent-soft);
 }
 .rec-dot svg { width: 10px; height: 10px; stroke-width: 2.6; }
+
+/* Schrumpfen-Leiste im Editor */
+.shrink { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 20px; }
+.shrink .shrink-info { font-size: 13px; flex: 1; min-width: 200px; }
 
 /* Bezahlt-Häkchen */
 .check {
@@ -368,7 +380,7 @@ a.list-item:hover .li-title { color: var(--accent); }
 .sumbar b { color: var(--ink); }
 
 /* ---------------------------------------------------------------- Formulare */
-.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; position: relative; }
 .field > span, .label-s { font-size: 12px; font-weight: 650; color: var(--muted); }
 .field small { color: var(--faint); font-size: 12px; }
 input[type=text], input[type=email], input[type=number], input[type=date], input[type=password], input[type=search], input[type=tel], input[type=url], select, textarea, .input {
@@ -527,7 +539,8 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 		backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; border-bottom: 1px solid var(--line-2);
 	}
 	.topbar .logo { color: var(--ink); flex: 1; }
-	.topbar .logo svg { width: 132px; height: auto; display: block; }
+	.topbar .logo svg { width: auto; max-width: 132px; max-height: 36px; height: auto; display: block; }
+	.topbar .logo .logo-text { font-size: 16px; }
 	.tabbar {
 		display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
 		background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
