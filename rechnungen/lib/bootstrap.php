@@ -224,6 +224,7 @@ function nw_settings_defaults() {
 		'accent'             => '#16171a',
 		'ui_theme'           => 'schlicht',
 		'ui_accent_pdf'      => '0',
+		'dash_layout'        => '',
 		'smtp_host'          => '',
 		'smtp_port'          => '465',
 		'smtp_secure'        => 'ssl',

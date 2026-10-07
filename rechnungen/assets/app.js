@@ -82,6 +82,7 @@
 		send: '<path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/>',
 		offer: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/>',
 		menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+		grip: '<circle cx="9" cy="6" r="1.2" fill="currentColor"/><circle cx="15" cy="6" r="1.2" fill="currentColor"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><circle cx="9" cy="18" r="1.2" fill="currentColor"/><circle cx="15" cy="18" r="1.2" fill="currentColor"/>',
 		sidebar: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M9 4v16"/>',
 	};
 	const icon = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -473,6 +474,26 @@
 
 	/* ================================================================ Übersicht */
 
+	/* ---------------------------------------------------------------- Übersicht: Widgets (verschieben, minimieren) */
+
+	const DASH_DEFAULT = { top: ['kpis'], main: ['chart', 'open'], side: ['limit', 'recurring', 'offers', 'drafts', 'years', 'top', 'activity'], min: [] };
+	const dashLayout = () => {
+		let l = null;
+		try { l = JSON.parse(S.settings.dash_layout || 'null'); } catch (e) { l = null; }
+		if (!l || !Array.isArray(l.main)) l = JSON.parse(JSON.stringify(DASH_DEFAULT));
+		l.top = l.top || []; l.side = l.side || []; l.min = l.min || [];
+		// neue Widgets (nach Updates) ergänzen, unbekannte entfernen
+		const all = [...DASH_DEFAULT.top, ...DASH_DEFAULT.main, ...DASH_DEFAULT.side];
+		['top', 'main', 'side'].forEach((z) => (l[z] = l[z].filter((id) => all.includes(id))));
+		all.forEach((id) => { if (!['top', 'main', 'side'].some((z) => l[z].includes(id))) (DASH_DEFAULT.top.includes(id) ? l.top : DASH_DEFAULT.main.includes(id) ? l.main : l.side).push(id); });
+		return l;
+	};
+	const pushDash = debounce(async () => {
+		try { await api('settings_save', { dash_layout: S.settings.dash_layout }); } catch (e) { fail(e); }
+	}, 400);
+	/** Anordnung sofort lokal übernehmen, verzögert speichern. */
+	const saveDash = (l) => { S.settings.dash_layout = JSON.stringify(l); pushDash(); };
+
 	async function viewDashboard() {
 		const main = $('#main');
 		const d = await api('dashboard');
@@ -483,6 +504,108 @@
 		const hour = new Date().getHours();
 		const hello = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Hallo' : 'Guten Abend';
 		const dueRec = d.recurring_due;
+		const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+
+		/* Jedes Widget: Titel, Kurzfassung (für minimiert), Inhalt, optional Kopf-Aktion, Karte ohne Rahmen (kpis) */
+		const W = {
+			kpis: {
+				title: 'Kennzahlen', bare: true,
+				sum: `Umsatz ${moneyShort(d.revenue)} · offen ${moneyShort(d.open_sum)}${d.overdue_count ? ' · überfällig ' + moneyShort(d.overdue_sum) : ''}`,
+				body: () => `<div class="grid g4 kpis">
+					<div class="card kpi"><div class="label">Umsatz ${y}</div><div class="value num">${moneyShort(d.revenue)}</div>
+						<div class="sub">${delta === null ? 'Vorjahr: ' + moneyShort(d.revenue_prev) : `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}${delta} %</span> zum Vorjahreszeitraum`}</div></div>
+					<div class="card kpi"><a class="cover" href="#/rechnungen?f=open" aria-label="Offene Rechnungen"></a><div class="label">Offen</div><div class="value num">${moneyShort(d.open_sum)}</div>
+						<div class="sub">${plural(d.open_count, 'Rechnung', 'Rechnungen')}</div></div>
+					<div class="card kpi ${d.overdue_count ? 'alert' : ''}"><a class="cover" href="#/rechnungen?f=overdue" aria-label="Überfällige Rechnungen"></a><div class="label">${d.overdue_count ? icon('alert') : ''}Überfällig</div><div class="value num">${moneyShort(d.overdue_sum)}</div>
+						<div class="sub">${d.overdue_count ? plural(d.overdue_count, 'Rechnung', 'Rechnungen') : 'alles im grünen Bereich'}</div></div>
+					<div class="card kpi"><a class="cover" href="#/dauerrechnungen" aria-label="Dauerrechnungen"></a><div class="label">Dauerrechnungen</div><div class="value num">${moneyShort(d.recurring_yearly)}</div>
+						<div class="sub">pro Jahr · ${d.recurring_count} aktiv</div></div>
+				</div>`,
+			},
+			chart: {
+				title: 'Umsatz nach Monat',
+				sum: `${y}: ${moneyShort(d.revenue)}`,
+				head: `<div class="legend"><span><i style="background:var(--prev)"></i>${y - 1}</span><span><i style="background:var(--cur)"></i>${y}</span></div>`,
+				body: () => `<div class="card-body"><div class="chart" id="chart"></div></div>`,
+				after: () => monthChart($('#chart'), d.months, d.months_prev, y),
+			},
+			open: {
+				title: 'Offene Rechnungen',
+				sum: d.open_count ? `${plural(d.open_count, 'Rechnung', 'Rechnungen')} · ${money(d.open_sum)}` : 'alles bezahlt',
+				head: `<a class="btn sm ghost" href="#/rechnungen?f=open">Alle ${icon('right')}</a>`,
+				body: () => `<div class="card-body" style="padding-top:4px">${d.open.length ? `<div class="list">${d.open.map((i) => `
+					<div class="list-item">
+						<button class="check ${i.state === 'partial' ? 'half' : ''}" data-pay="${i.id}" title="Zahlungseingang abhaken" aria-label="Rechnung ${esc(i.number)} als bezahlt abhaken">${icon('check')}</button>
+						<a class="li-main" href="#/rechnung/${i.id}" style="text-decoration:none"><div class="li-title">${withRec(esc(i.recipient.name), i.is_recurring)}</div>
+							<div class="li-sub"><span class="mono">${esc(i.number)}</span> · ${date(i.invoice_date)}${i.state === 'partial' ? ` · <span style="color:var(--warn);font-weight:700">teilweise bezahlt</span>` : ''}${i.days_overdue > 0 ? ` · <span style="color:var(--bad);font-weight:700">${i.days_overdue} Tage überfällig</span>` : i.state !== 'partial' && i.payment_days > 0 ? ' · fällig ' + date(i.due_date) : ''}</div></a>
+						<b class="num">${money(i.open)}</b>
+					</div>`).join('')}</div>` : '<div class="empty"><span class="big">[ ✓ ]</span>Alles bezahlt.</div>'}</div>`,
+			},
+			limit: d.small_business ? {
+				title: `Kleinunternehmergrenze ${y}`,
+				sum: `${Math.round(limitPct)} % · noch ${moneyShort(Math.max(0, d.limit - d.revenue))}`,
+				head: `<span class="muted num" style="font-size:12.5px">${Math.round(limitPct)} %</span>`,
+				body: () => `<div class="card-body" style="padding-top:8px"><div class="meter ${limitPct > 90 ? 'bad' : limitPct > 75 ? 'warn' : ''}" style="margin-top:0"><i style="width:${limitPct}%"></i></div>
+					<div class="muted" style="font-size:12.5px;margin-top:8px">${money(d.revenue)} von ${money(d.limit)} · noch ${money(Math.max(0, d.limit - d.revenue))} Spielraum</div></div>`,
+			} : null,
+			recurring: {
+				title: 'Nächste Dauerrechnungen',
+				sum: d.recurring_upcoming.length ? `${d.recurring_upcoming.length} in 60 Tagen · nächste ${date(d.recurring_upcoming[0].next_date)}` : 'keine in den nächsten 60 Tagen',
+				head: `<a class="btn sm ghost" href="#/dauerrechnungen" aria-label="Alle Dauerrechnungen">${icon('right')}</a>`,
+				body: () => `<div class="card-body" style="padding-top:4px">${d.recurring_upcoming.length ? `<div class="list">${d.recurring_upcoming.map((r) => `
+					<a class="list-item" href="#/dauerrechnungen?id=${r.id}"><div class="li-main"><div class="li-title">${withRec(esc(r.customer_name), true, 'Dauerrechnung')}</div>
+						<div class="li-sub">${r.due ? '<b style="color:var(--accent)">fällig</b>' : date(r.next_date)} · ${esc(r.title || INTERVALS[r.interval_months])}${r.email_missing ? ' · <span style="color:var(--warn)">E-Mail fehlt</span>' : ''}</div></div>
+						<b class="num">${money(r.gross)}</b></a>`).join('')}</div>` : '<div class="empty">In den nächsten 60 Tagen keine.</div>'}</div>`,
+			},
+			offers: {
+				title: 'Offene Angebote',
+				sum: d.offers_open.length ? `${plural(d.offers_open.length, 'Angebot', 'Angebote')} · ${money(d.offers_open.reduce((a, o) => a + o.gross, 0))}` : 'keine offenen',
+				head: `<a class="btn sm ghost" href="#/angebote?f=sent" aria-label="Alle Angebote">${icon('right')}</a>`,
+				body: () => `<div class="card-body" style="padding-top:4px">${d.offers_open.length ? `<div class="list">${d.offers_open.map((o) => `
+					<a class="list-item" href="#/angebot/${o.id}"><div class="li-main"><div class="li-title">${esc(o.recipient.name)}</div><div class="li-sub"><span class="mono">${esc(o.number)}</span> · gültig bis ${date(o.valid_until)}</div></div><b class="num">${money(o.gross)}</b></a>`).join('')}</div>` : '<div class="empty">Keine offenen Angebote.</div>'}</div>`,
+			},
+			drafts: {
+				title: 'Entwürfe',
+				sum: d.drafts.length ? plural(d.drafts.length, 'Entwurf', 'Entwürfe') : 'keine',
+				body: () => `<div class="card-body" style="padding-top:4px">${d.drafts.length ? `<div class="list">${d.drafts.map((i) => `
+					<a class="list-item" href="#/${i.kind === 'offer' ? 'angebot' : 'rechnung'}/${i.id}"><div class="li-main"><div class="li-title">${withRec(esc(i.recipient.name || 'Ohne Empfänger'), i.is_recurring)}</div><div class="li-sub">${i.kind === 'offer' ? 'Angebot' : 'Rechnung'} · zuletzt ${date(i.updated_at)}</div></div><b class="num">${money(i.gross)}</b></a>`).join('')}</div>` : '<div class="empty">Keine Entwürfe.</div>'}</div>`,
+			},
+			years: {
+				title: 'Umsatz pro Jahr',
+				sum: d.years.length ? `${d.years[0].y}–${d.years[d.years.length - 1].y}` : '—',
+				body: () => `<div class="card-body">${yearBars(d.years)}</div>`,
+			},
+			top: {
+				title: `Top-Kunden ${y}`,
+				sum: d.top_customers.length ? `${esc(d.top_customers[0].name)} · ${moneyShort(+d.top_customers[0].revenue)}` : '—',
+				body: () => `<div class="card-body" style="padding-top:4px">${d.top_customers.length ? `<div class="list">${d.top_customers.map((c) => `
+					<a class="list-item" href="#/kunde/${c.id}"><div class="li-main"><div class="li-title">${esc(c.name)}</div></div><b class="num">${money(c.revenue)}</b></a>`).join('')}</div>` : '<div class="empty">Noch keine Rechnungen in diesem Jahr.</div>'}</div>`,
+			},
+			activity: {
+				title: 'Zuletzt',
+				sum: d.activity.length ? esc(d.activity[0].text).slice(0, 60) : '—',
+				body: () => `<div class="card-body"><div class="timeline">${d.activity.map((a) => `
+					<div class="tl"><div>${a.invoice_id ? `<a href="#/rechnung/${a.invoice_id}">${esc(a.text)}</a>` : esc(a.text)}${a.customer ? ` <span class="muted">· ${esc(a.customer)}</span>` : ''}<div class="when">${relTime(a.created_at)}</div></div></div>`).join('')}</div></div>`,
+			},
+		};
+
+		let L = dashLayout();
+		const widget = (id) => {
+			const w = W[id];
+			if (!w) return '';
+			const min = L.min.includes(id);
+			return `<section class="widget ${w.bare && !min ? 'bare' : 'card'} ${min ? 'is-min' : ''}" data-w="${id}" aria-label="${esc(w.title)}">
+				<div class="w-head">
+					<button type="button" class="w-grip" data-grip title="Ziehen zum Verschieben (oder Pfeiltasten)" aria-label="${esc(w.title)} verschieben">${icon('grip')}</button>
+					<h2>${esc(w.title)}</h2>
+					${min ? `<span class="w-sum">${w.sum}</span>` : `<span class="w-actions">${w.head || ''}</span>`}
+					<button type="button" class="w-min" data-min title="${min ? 'Aufklappen' : 'Minimieren'}" aria-label="${esc(w.title)} ${min ? 'aufklappen' : 'minimieren'}" aria-expanded="${!min}">${icon(min ? 'down' : 'up')}</button>
+				</div>
+				${min ? '' : `<div class="w-body">${w.body()}</div>`}
+			</section>`;
+		};
+		const zone = (z) => `<div class="dash-col" data-zone="${z}">${L[z].map(widget).join('')}</div>`;
+
 		main.innerHTML = `<div class="page">
 			<div class="app-name">Rechnungsprogramm</div>
 			${pageHead(S.settings.owner ? `${hello}, ${esc(S.settings.owner.split(' ')[0])}.` : `${hello}.`, { sub: new Date().toLocaleDateString('de-AT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) },
@@ -496,82 +619,101 @@
 					<button class="btn primary" data-run-due>${icon('play')} Jetzt alle erstellen</button>
 				</div></div>` : ''}
 
-			<div class="grid g4 kpis" style="margin-bottom:16px">
-				<div class="card kpi"><div class="label">Umsatz ${y}</div><div class="value num">${moneyShort(d.revenue)}</div>
-					<div class="sub">${delta === null ? 'Vorjahr: ' + moneyShort(d.revenue_prev) : `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}${delta} %</span> zum Vorjahreszeitraum`}</div></div>
-				<div class="card kpi"><a class="cover" href="#/rechnungen?f=open" aria-label="Offene Rechnungen"></a><div class="label">Offen</div><div class="value num">${moneyShort(d.open_sum)}</div>
-					<div class="sub">${d.open_count} Rechnung${d.open_count === 1 ? '' : 'en'}</div></div>
-				<div class="card kpi ${d.overdue_count ? 'alert' : ''}"><a class="cover" href="#/rechnungen?f=overdue" aria-label="Überfällige Rechnungen"></a><div class="label">${d.overdue_count ? icon('alert') : ''}Überfällig</div><div class="value num">${moneyShort(d.overdue_sum)}</div>
-					<div class="sub">${d.overdue_count ? d.overdue_count + ' Rechnung' + (d.overdue_count === 1 ? '' : 'en') : 'alles im grünen Bereich'}</div></div>
-				<div class="card kpi"><a class="cover" href="#/dauerrechnungen" aria-label="Dauerrechnungen"></a><div class="label">Dauerrechnungen</div><div class="value num">${moneyShort(d.recurring_yearly)}</div>
-					<div class="sub">pro Jahr · ${d.recurring_count} aktiv</div></div>
+			<div class="dash" id="dash">
+				${zone('top')}
+				<div class="dash-cols">${zone('main')}${zone('side')}</div>
 			</div>
-
-			<div class="grid g-main">
-				<div class="grid" style="align-content:start">
-					<div class="card">
-						<div class="card-head"><h2>Umsatz nach Monat</h2>
-							<div class="legend"><span><i style="background:var(--prev)"></i>${y - 1}</span><span><i style="background:var(--cur)"></i>${y}</span></div></div>
-						<div class="card-body"><div class="chart" id="chart"></div></div>
-					</div>
-
-					<div class="card">
-						<div class="card-head"><h2>Offene Rechnungen</h2><a class="btn sm ghost" href="#/rechnungen?f=open">Alle ${icon('right')}</a></div>
-						<div class="card-body" style="padding-top:4px">${d.open.length ? `<div class="list">${d.open.map((i) => `
-							<div class="list-item">
-								<button class="check" data-pay="${i.id}" title="Zahlungseingang abhaken" aria-label="Rechnung ${esc(i.number)} als bezahlt abhaken">${icon('check')}</button>
-								<a class="li-main" href="#/rechnung/${i.id}" style="text-decoration:none"><div class="li-title">${withRec(esc(i.recipient.name), i.is_recurring)}</div>
-									<div class="li-sub"><span class="mono">${esc(i.number)}</span> · ${date(i.invoice_date)}${i.state === 'partial' ? ` · <span style="color:var(--warn);font-weight:700">teilweise bezahlt</span>` : ''}${i.days_overdue > 0 ? ` · <span style="color:var(--bad);font-weight:700">${i.days_overdue} Tage überfällig</span>` : i.state !== 'partial' && i.payment_days > 0 ? ' · fällig ' + date(i.due_date) : ''}</div></a>
-								<b class="num">${money(i.open)}</b>
-							</div>`).join('')}</div>` : '<div class="empty"><span class="big">[ ✓ ]</span>Alles bezahlt.</div>'}</div>
-					</div>
-				</div>
-
-				<div class="grid" style="align-content:start">
-					${d.small_business ? `<div class="card card-pad">
-						<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><h3>Kleinunternehmergrenze ${y}</h3><span class="muted num" style="font-size:12.5px">${Math.round(limitPct)} %</span></div>
-						<div class="meter ${limitPct > 90 ? 'bad' : limitPct > 75 ? 'warn' : ''}"><i style="width:${limitPct}%"></i></div>
-						<div class="muted" style="font-size:12.5px;margin-top:8px">${money(d.revenue)} von ${money(d.limit)} · noch ${money(Math.max(0, d.limit - d.revenue))} Spielraum</div>
-					</div>` : ''}
-
-					<div class="card">
-						<div class="card-head"><h2>Nächste Dauerrechnungen</h2><a class="btn sm ghost" href="#/dauerrechnungen">${icon('right')}</a></div>
-						<div class="card-body" style="padding-top:4px">${d.recurring_upcoming.length ? `<div class="list">${d.recurring_upcoming.map((r) => `
-							<a class="list-item" href="#/dauerrechnungen?id=${r.id}"><div class="li-main"><div class="li-title">${withRec(esc(r.customer_name), true, 'Dauerrechnung')}</div>
-								<div class="li-sub">${r.due ? '<b style="color:var(--accent)">fällig</b>' : date(r.next_date)} · ${esc(r.title || INTERVALS[r.interval_months])}${r.email_missing ? ' · <span style="color:var(--warn)">E-Mail fehlt</span>' : ''}</div></div>
-								<b class="num">${money(r.gross)}</b></a>`).join('')}</div>` : '<div class="empty">In den nächsten 60 Tagen keine.</div>'}</div>
-					</div>
-
-					${d.offers_open.length ? `<div class="card"><div class="card-head"><h2>Offene Angebote</h2><a class="btn sm ghost" href="#/angebote?f=sent">${icon('right')}</a></div><div class="card-body" style="padding-top:4px"><div class="list">${d.offers_open.map((o) => `
-						<a class="list-item" href="#/angebot/${o.id}"><div class="li-main"><div class="li-title">${esc(o.recipient.name)}</div><div class="li-sub"><span class="mono">${esc(o.number)}</span> · gültig bis ${date(o.valid_until)}</div></div><b class="num">${money(o.gross)}</b></a>`).join('')}</div></div></div>` : ''}
-
-					${d.drafts.length ? `<div class="card"><div class="card-head"><h2>Entwürfe</h2></div><div class="card-body" style="padding-top:4px"><div class="list">${d.drafts.map((i) => `
-						<a class="list-item" href="#/${i.kind === 'offer' ? 'angebot' : 'rechnung'}/${i.id}"><div class="li-main"><div class="li-title">${withRec(esc(i.recipient.name || 'Ohne Empfänger'), i.is_recurring)}</div><div class="li-sub">${i.kind === 'offer' ? 'Angebot' : 'Rechnung'} · zuletzt ${date(i.updated_at)}</div></div><b class="num">${money(i.gross)}</b></a>`).join('')}</div></div></div>` : ''}
-
-					<div class="card">
-						<div class="card-head"><h2>Umsatz pro Jahr</h2></div>
-						<div class="card-body">${yearBars(d.years)}</div>
-					</div>
-
-					<div class="card">
-						<div class="card-head"><h2>Top-Kunden ${y}</h2></div>
-						<div class="card-body" style="padding-top:4px">${d.top_customers.length ? `<div class="list">${d.top_customers.map((c) => `
-							<a class="list-item" href="#/kunde/${c.id}"><div class="li-main"><div class="li-title">${esc(c.name)}</div></div><b class="num">${money(c.revenue)}</b></a>`).join('')}</div>` : '<div class="empty">Noch keine Rechnungen in diesem Jahr.</div>'}</div>
-					</div>
-
-					<div class="card">
-						<div class="card-head"><h2>Zuletzt</h2></div>
-						<div class="card-body"><div class="timeline">${d.activity.map((a) => `
-							<div class="tl"><div>${a.invoice_id ? `<a href="#/rechnung/${a.invoice_id}">${esc(a.text)}</a>` : esc(a.text)}${a.customer ? ` <span class="muted">· ${esc(a.customer)}</span>` : ''}<div class="when">${relTime(a.created_at)}</div></div></div>`).join('')}</div></div>
-					</div>
-				</div>
-			</div>
+			<div class="dash-foot"><button type="button" class="btn sm ghost" data-dash-reset>Anordnung zurücksetzen</button><span class="muted">Widgets am Griff ${icon('grip')} ziehen, mit ${icon('up')} minimieren.</span></div>
 		</div>`;
-		monthChart($('#chart'), d.months, d.months_prev, y);
+
+		const readLayout = () => {
+			const l = { top: [], main: [], side: [], min: L.min };
+			$$('.dash-col', main).forEach((c) => (l[c.dataset.zone] = $$('.widget', c).map((w) => w.dataset.w)));
+			return l;
+		};
+		const bind = () => {
+			Object.entries(W).forEach(([id, w]) => { if (w && w.after && !L.min.includes(id) && $(`[data-w="${id}"]`, main)) w.after(); });
+			$$('[data-pay]', main).forEach((b) => (b.onclick = () => quickPay(+b.dataset.pay, b, () => viewDashboard())));
+			$$('[data-min]', main).forEach((b) => (b.onclick = () => {
+				const id = b.closest('.widget').dataset.w;
+				L.min = L.min.includes(id) ? L.min.filter((x) => x !== id) : [...L.min, id];
+				const el = b.closest('.widget');
+				el.outerHTML = widget(id);
+				saveDash(L); bind();
+				$(`[data-w="${id}"] [data-min]`, main)?.focus();
+			}));
+			$$('[data-grip]', main).forEach((g) => {
+				g.onpointerdown = (e) => startDrag(e, g.closest('.widget'));
+				g.onkeydown = (e) => keyMove(e, g.closest('.widget'));
+			});
+		};
+
+		/* Ziehen mit Maus und Finger (Pointer Events): Platzhalter wandert mit, Loslassen setzt das Widget dort ab */
+		const startDrag = (e, el) => {
+			if (e.button !== undefined && e.button !== 0) return;
+			e.preventDefault();
+			const r = el.getBoundingClientRect();
+			const ph = document.createElement('div');
+			ph.className = 'w-placeholder';
+			ph.style.height = r.height + 'px';
+			el.after(ph);
+			const dx = e.clientX - r.left, dy = e.clientY - r.top;
+			Object.assign(el.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', zIndex: 60, pointerEvents: 'none' });
+			el.classList.add('dragging');
+			document.body.classList.add('is-dragging');
+			const move = (ev) => {
+				el.style.left = ev.clientX - dx + 'px';
+				el.style.top = ev.clientY - dy + 'px';
+				const under = document.elementFromPoint(ev.clientX, ev.clientY);
+				const col = under?.closest('.dash-col') || (under?.closest('.dash-cols') ? null : null);
+				if (col) {
+					const after = $$('.widget:not(.dragging)', col).find((w) => { const b = w.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+					if (after) col.insertBefore(ph, after); else col.appendChild(ph);
+				}
+				// am Rand automatisch scrollen
+				if (ev.clientY < 60) window.scrollBy(0, -14); else if (ev.clientY > innerHeight - 60) window.scrollBy(0, 14);
+			};
+			const up = () => {
+				removeEventListener('pointermove', move);
+				removeEventListener('pointerup', up);
+				removeEventListener('pointercancel', up);
+				el.removeAttribute('style');
+				el.classList.remove('dragging');
+				document.body.classList.remove('is-dragging');
+				ph.replaceWith(el);
+				L = readLayout(); saveDash(L);
+				const id = el.dataset.w;
+				// Diagramm passt sich der neuen Breite an
+				if (W[id]?.after && !L.min.includes(id)) W[id].after();
+				$('[data-grip]', el)?.focus();
+			};
+			addEventListener('pointermove', move);
+			addEventListener('pointerup', up);
+			addEventListener('pointercancel', up);
+		};
+		/* Tastatur: ↑/↓ innerhalb der Spalte, ←/→ in die Nachbarspalte */
+		const keyMove = (e, el) => {
+			const zones = $$('.dash-col', main);
+			const col = el.parentElement;
+			if (e.key === 'ArrowUp' && el.previousElementSibling) col.insertBefore(el, el.previousElementSibling);
+			else if (e.key === 'ArrowDown' && el.nextElementSibling) col.insertBefore(el.nextElementSibling, el);
+			else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+				const to = zones[zones.indexOf(col) + (e.key === 'ArrowLeft' ? -1 : 1)];
+				if (!to) return;
+				to.appendChild(el);
+			} else return;
+			e.preventDefault();
+			L = readLayout(); saveDash(L);
+			$('[data-grip]', el).focus();
+			const id = el.dataset.w;
+			if (W[id]?.after && !L.min.includes(id)) W[id].after();
+		};
+
+		bind();
+		$('[data-dash-reset]', main).onclick = () => { L = JSON.parse(JSON.stringify(DASH_DEFAULT)); saveDash(L); viewDashboard(); toast('Anordnung zurückgesetzt'); };
 		api('update_check').then((u) => {
 			if (u.newer && $('#main .page')) $('#main .app-name')?.insertAdjacentHTML('afterend', `<a class="note-ok" href="#/einstellungen/update" style="margin:-12px 0 20px;text-decoration:none">${icon('download')}<span>Update auf Version ${esc(u.latest)} verfügbar – jetzt ansehen</span></a>`);
 		}).catch(() => {});
-		$$('[data-pay]', main).forEach((b) => (b.onclick = () => quickPay(+b.dataset.pay, b, () => viewDashboard())));
 		$('[data-run-due]', main)?.addEventListener('click', runDue);
 	}
 

@@ -81,6 +81,7 @@ Das PDF entsteht direkt in PHP, ganz ohne Bibliothek:
 - Artikelkatalog mit Kategorien; wiederkehrende Leistungen markierbar
 
 **Übersicht & Auswertung**
+- **Widgets frei anordnen**: am Griff ziehen (Maus, Finger oder Pfeiltasten), minimieren auf eine Zeile mit dem Wichtigsten – die Anordnung wird gespeichert
 - Umsatz im Jahr mit Vorjahresvergleich, Monatsdiagramm, Umsatz pro Jahr, Top-Kunden
 - offene und überfällige Rechnungen, offene Angebote, nächste Dauerrechnungen
 - **Kleinunternehmergrenze** im Blick (55.000 €)

@@ -433,6 +433,34 @@ a.list-item:hover .li-title { color: var(--accent); }
 .mini-main .mb { display: flex; gap: 4px; }
 .mini-main .mb s { height: 8px; flex: 1; border-radius: 99px; text-decoration: none; }
 
+/* Übersicht: Widgets */
+.dash { display: flex; flex-direction: column; gap: 16px; }
+.dash-cols { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.dash-col { display: flex; flex-direction: column; gap: 16px; min-height: 40px; border-radius: var(--radius); }
+.dash-col[data-zone="top"]:empty { min-height: 24px; }
+body.is-dragging .dash-col { outline: 1.5px dashed var(--line); outline-offset: 4px; }
+body.is-dragging { cursor: grabbing; user-select: none; }
+.widget { min-width: 0; }
+.widget.bare { background: transparent; }
+.w-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 0 10px; min-height: 46px; }
+.widget.bare .w-head { padding: 0 2px 8px 0; min-height: 0; }
+.widget.bare .w-head h2 { font-size: 13px; color: var(--muted); }
+.w-head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-actions { display: flex; align-items: center; gap: 8px; }
+.w-grip, .w-min { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border: 0; background: transparent; color: var(--faint); border-radius: var(--r-ctl); cursor: grab; touch-action: none; }
+.w-min { cursor: pointer; }
+.w-grip:hover, .w-min:hover { background: var(--surface-2); color: var(--ink); }
+.w-grip svg, .w-min svg { width: 16px; height: 16px; }
+.widget.is-min .w-head { padding-bottom: 14px; }
+.w-sum { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; font-variant-numeric: tabular-nums; }
+.widget.is-min h2 { flex: 0 1 auto; }
+.widget.is-min .w-sum { flex: 1; text-align: right; }
+.widget.dragging { box-shadow: var(--shadow-lg); opacity: .96; transform: rotate(.6deg); }
+.widget.dragging.bare { background: var(--bg); }
+.w-placeholder { border: 2px dashed var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); }
+.dash-foot { display: flex; align-items: center; gap: 12px; margin-top: 18px; font-size: 12.5px; flex-wrap: wrap; }
+.dash-foot svg { width: 14px; height: 14px; vertical-align: -2px; }
+
 /* Bezahlt-Häkchen */
 .check {
 	width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--faint); background: var(--surface);
@@ -621,6 +649,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 /* ---------------------------------------------------------------- Mobil */
 @media (max-width: 1180px) {
 	.g-main { grid-template-columns: minmax(0, 1fr); }
+	.dash-cols { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 1000px) {
 	.g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
