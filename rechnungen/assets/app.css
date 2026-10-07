@@ -192,19 +192,21 @@ svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none;
 .side-version:hover { color: var(--ink); }
 kbd { font: 600 11px var(--sans); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; color: var(--muted); background: var(--surface); }
 
-/* Eingeklappt: schmale Icon-Leiste */
-.shell { transition: grid-template-columns .18s ease; }
-.shell.collapsed { grid-template-columns: var(--side-c) minmax(0, 1fr); }
-.shell.collapsed .side { padding: 20px 10px 14px; }
-.shell.collapsed .lbl, .shell.collapsed .brand-logo, .shell.collapsed .nav .count { display: none; }
-.shell.collapsed .side-head { flex-direction: column; align-items: center; gap: 6px; }
-.shell.collapsed .brand { padding: 0; align-items: center; }
-.shell.collapsed .brand-mark { display: block; }
-.shell.collapsed .side-toggle { transform: scaleX(-1); }
-.shell.collapsed .side .new { width: 44px; height: 40px; padding: 0; margin: 0 auto 18px; }
-.shell.collapsed .nav a, .shell.collapsed .side-link { justify-content: center; padding: 0; }
-.shell.collapsed .nav a.on { background: var(--accent-soft); }
-.shell.collapsed .nav-sep { margin: 10px 6px; }
+/* Eingeklappt: schmale Icon-Leiste (nur Desktop) */
+@media (min-width: 861px) {
+	.shell { transition: grid-template-columns .18s ease; }
+	.shell.collapsed { grid-template-columns: var(--side-c) minmax(0, 1fr); }
+	.shell.collapsed .side { padding: 20px 10px 14px; }
+	.shell.collapsed .lbl, .shell.collapsed .brand-logo, .shell.collapsed .nav .count { display: none; }
+	.shell.collapsed .side-head { flex-direction: column; align-items: center; gap: 6px; }
+	.shell.collapsed .brand { padding: 0; align-items: center; }
+	.shell.collapsed .brand-mark { display: block; }
+	.shell.collapsed .side-toggle { transform: scaleX(-1); }
+	.shell.collapsed .side .new { width: 44px; height: 40px; padding: 0; margin: 0 auto 18px; }
+	.shell.collapsed .nav a, .shell.collapsed .side-link { justify-content: center; padding: 0; }
+	.shell.collapsed .nav a.on { background: var(--accent-soft); }
+	.shell.collapsed .nav-sep { margin: 10px 6px; }
+}
 
 .main { min-width: 0; padding: 32px 40px 80px; }
 .page { max-width: 1200px; margin: 0 auto; }
@@ -531,15 +533,23 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 	.g3 { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 860px) {
-	.shell { grid-template-columns: minmax(0, 1fr); }
-	.side { display: none; }
+	.shell, .shell.collapsed { grid-template-columns: minmax(0, 1fr); }
 	.main { padding: 14px 16px calc(96px + var(--safe-b)); }
 	.topbar {
 		display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent);
 		backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; border-bottom: 1px solid var(--line-2);
 	}
-	.topbar .logo { color: var(--ink); flex: 1; }
-	.topbar .logo svg { width: auto; max-width: 132px; max-height: 36px; height: auto; display: block; }
+	.topbar { display: grid !important; grid-template-columns: 40px 1fr 40px; }
+	.topbar .logo { color: var(--ink); justify-self: center; text-decoration: none; }
+	/* Seitenleiste als Menü von links */
+	.side { display: flex; position: fixed; left: 0; top: 0; bottom: 0; width: min(300px, 86vw); height: 100dvh; z-index: 45;
+		transform: translateX(-102%); transition: transform .22s cubic-bezier(.2, .8, .2, 1); box-shadow: var(--shadow-lg);
+		padding-top: calc(20px + env(safe-area-inset-top, 0px)); padding-bottom: calc(14px + var(--safe-b)); }
+	.shell.menu-open .side { transform: none; }
+	.side .side-toggle { display: none; }
+	.side-scrim { position: fixed; inset: 0; background: rgba(10, 12, 16, .4); z-index: 44; opacity: 0; pointer-events: none; transition: opacity .2s; }
+	.shell.menu-open .side-scrim { opacity: 1; pointer-events: auto; }
+	.topbar .logo svg { height: 32px; width: auto; max-width: 180px; display: block; }
 	.topbar .logo .logo-text { font-size: 16px; }
 	.tabbar {
 		display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;

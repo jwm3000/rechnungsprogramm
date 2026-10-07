@@ -81,6 +81,7 @@
 		key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/>',
 		send: '<path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/>',
 		offer: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/>',
+		menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
 		sidebar: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M9 4v16"/>',
 	};
 	const icon = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -320,10 +321,11 @@
 			</aside>
 			<div>
 				<header class="topbar">
+					<button class="btn ghost icon" data-menu aria-label="Menü öffnen" aria-expanded="false">${icon('menu')}</button>
 					<a class="logo" href="#/" aria-label="Übersicht">${LOGO()}</a>
 					<button class="btn ghost icon" data-palette aria-label="Suchen">${icon('search')}</button>
-					<a class="btn ghost icon" href="#/einstellungen" aria-label="Einstellungen">${icon('cog')}</a>
 				</header>
+				<div class="side-scrim" data-menu-close></div>
 				<main class="main" id="main"></main>
 			</div>
 			<nav class="tabbar">
@@ -337,6 +339,16 @@
 		$$('[data-palette]').forEach((b) => (b.onclick = openPalette));
 		$$('[data-theme-btn]').forEach((b) => (b.onclick = cycleTheme));
 		$('[data-logout]').onclick = logout;
+		// Handy: Seitenleiste als Menü von links
+		const setMenu = (open) => {
+			$('.shell').classList.toggle('menu-open', open);
+			$('[data-menu]')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+			if (open) $('.side .nav a')?.focus();
+		};
+		$('[data-menu]').onclick = () => setMenu(true);
+		$('[data-menu-close]').onclick = () => setMenu(false);
+		$$('.side a, .side button:not([data-collapse])').forEach((a) => a.addEventListener('click', () => setMenu(false)));
+		document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('.shell.menu-open')) setMenu(false); });
 		$('[data-collapse]').onclick = () => {
 			const on = !$('.shell').classList.contains('collapsed');
 			$('.shell').classList.toggle('collapsed', on);
