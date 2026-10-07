@@ -93,7 +93,7 @@ try {
 					'next_offer'      => nw_next_offer_number(),
 					'recurring'       => nw_recurring_list(),
 					'next_number'     => nw_next_number(),
-					'mail'            => array( 'configured' => nw_mail_configured(), 'from' => $smtp['from'] ?: $smtp['user'], 'host' => $smtp['host'], 'bcc' => $smtp['bcc'], 'source' => $smtp['source'], 'has_pass' => '' !== $smtp['pass'] ),
+					'mail'            => array( 'configured' => nw_mail_configured(), 'from' => $smtp['from'] ?: $smtp['user'], 'host' => $smtp['host'], 'bcc' => $smtp['bcc'], 'reply_to' => nw_reply_to( $smtp, $smtp['from'] ?: $smtp['user'] ), 'source' => $smtp['source'], 'has_pass' => '' !== $smtp['pass'] ),
 					'cron_url'        => 'cron.php?key=' . nw_cron_key(),
 					'today'           => nw_today(),
 					'version'         => NW_APP,
@@ -285,6 +285,7 @@ try {
 					'from'      => trim( (string) ( $in['smtp_from'] ?? '' ) ),
 					'from_name' => trim( (string) ( $in['smtp_from_name'] ?? '' ) ),
 					'bcc'       => trim( (string) ( $in['smtp_bcc'] ?? '' ) ),
+					'reply_to'  => trim( (string) ( $in['smtp_reply_to'] ?? '' ) ),
 					'source'    => 'app',
 				);
 				if ( '' !== $cfg['host'] && ! preg_match( '/^[a-z0-9.-]+$/i', $cfg['host'] ) ) {
@@ -294,6 +295,9 @@ try {
 					if ( '' !== $cfg[ $k ] && 'from' === $k && ! nw_is_email( $cfg[ $k ] ) ) {
 						nw_fail( 'Ungültige Absenderadresse.' );
 					}
+				}
+				if ( '' !== $cfg['reply_to'] && ! nw_is_email( $cfg['reply_to'] ) ) {
+					nw_fail( 'Ungültige Antwortadresse.' );
 				}
 				foreach ( preg_split( '/[,;\s]+/', $cfg['bcc'], -1, PREG_SPLIT_NO_EMPTY ) as $e ) {
 					if ( ! nw_is_email( $e ) ) {
@@ -305,7 +309,7 @@ try {
 				if ( 'config' === $cur['source'] ) {
 					nw_fail( 'Der E-Mail-Zugang ist in der config.php festgelegt.' );
 				}
-				foreach ( array( 'host', 'port', 'secure', 'user', 'from', 'from_name', 'bcc' ) as $k ) {
+				foreach ( array( 'host', 'port', 'secure', 'user', 'from', 'from_name', 'bcc', 'reply_to' ) as $k ) {
 					nw_set_setting( 'smtp_' . $k, (string) $cfg[ $k ] );
 				}
 				if ( ! empty( $in['smtp_clear_pass'] ) ) {
@@ -324,7 +328,7 @@ try {
 				out( array( 'error' => 'Bitte zuerst einen SMTP-Server eintragen.' ), 400 );
 			}
 			try {
-				NW_SMTP::send( $cfg, array( 'from' => $cfg['from'] ?: $cfg['user'], 'from_name' => $cfg['from_name'] ?: nw_setting( 'company' ), 'to' => $to, 'subject' => 'Testmail aus dem Rechnungsprogramm', 'text' => "Der E-Mail-Versand funktioniert.\n\n" . date( 'd.m.Y H:i' ) ) );
+				NW_SMTP::send( $cfg, array( 'from' => $cfg['from'] ?: $cfg['user'], 'from_name' => $cfg['from_name'] ?: nw_setting( 'company' ), 'to' => $to, 'reply_to' => nw_reply_to( $cfg, $cfg['from'] ?: $cfg['user'] ), 'subject' => 'Testmail aus dem Rechnungsprogramm', 'text' => "Der E-Mail-Versand funktioniert.\n\n" . date( 'd.m.Y H:i' ) ) );
 			} catch ( Throwable $e ) {
 				out( array( 'error' => $e->getMessage() ), 400 );
 			}

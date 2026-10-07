@@ -887,7 +887,7 @@
 				<label class="field c6"><span>Kopie (CC)</span><input type="text" name="cc" value="${esc(pre.cc || '')}"></label>
 				<label class="field c6"><span>Betreff</span><input type="text" name="subject" value="${esc(pre.subject)}"></label>
 				<label class="field c6"><span>Nachricht</span><textarea name="body" rows="11">${esc(pre.body)}</textarea></label>
-				<div class="c6 hint">${icon('paperclip')} Anhang: <b>${esc(pre.filename)}</b>${S.mail.bcc ? ` · Kopie an ${esc(S.mail.bcc)}` : ''}</div>
+				<div class="c6 hint">${icon('paperclip')} Anhang: <b>${esc(pre.filename)}</b>${S.mail.reply_to ? ` · Antworten an ${esc(S.mail.reply_to)}` : ''}${S.mail.bcc ? ` · Kopie an ${esc(S.mail.bcc)}` : ''}</div>
 			</div>`,
 			`<button class="btn" data-mailto>${icon('mail')} Im Mailprogramm öffnen</button><span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-send ${pre.configured ? '' : 'disabled'}>${icon('send')} Senden</button>`);
 		const val = (n) => $(`[name=${n}]`, el).value;
@@ -1698,7 +1698,7 @@
 				<div class="section-title c6">Angebote</div>
 				${f('offer_intro', 'Einleitung Angebot', { c: 'c6', area: true, rows: 2 })}${f('offer_outro', 'Schlusstext Angebot', { c: 'c6', area: true, rows: 2 })}${f('offer_subject', 'Betreff Angebot', { c: 'c6' })}${f('offer_body', 'Text Angebot', { c: 'c6', area: true, rows: 8 })}
 				<div class="c6 hint">Platzhalter: <code>{ANREDE}</code> <code>{NUMMER}</code> <code>{DATUM}</code> <code>{BETRAG}</code> <code>{OFFEN}</code> <code>{FAELLIG}</code> <code>{ZAHLUNG}</code> <code>{ZEITRAUM}</code> <code>{KUNDE}</code> <code>{FIRMA}</code> <code>{INHABER}</code> <code>{GUELTIG}</code> (Angebot)</div></div>`,
-			mail: `${S.mail.configured ? `<div class="note-ok">${icon('check')}<span>E-Mail-Versand eingerichtet: <b>${esc(S.mail.from)}</b> über ${esc(S.mail.host)}${S.mail.bcc ? ` · Kopie an ${esc(S.mail.bcc)}` : ''}</span></div>`
+			mail: `${S.mail.configured ? `<div class="note-ok">${icon('check')}<span>E-Mail-Versand eingerichtet: <b>${esc(S.mail.from)}</b> über ${esc(S.mail.host)}${S.mail.reply_to ? ` · Antworten an ${esc(S.mail.reply_to)}` : ''}${S.mail.bcc ? ` · Kopie an ${esc(S.mail.bcc)}` : ''}</span></div>`
 				: `<div class="note-warn">${icon('alert')}<span>Noch kein E-Mail-Zugang eingerichtet – Rechnungen können noch nicht verschickt werden.</span></div>`}
 				${S.mail.source === 'config' ? `<div class="hint" style="margin-top:16px">Der Zugang ist in der <code>config.php</code> festgelegt und hat dort Vorrang. Zum Ändern die Datei bearbeiten oder den SMTP-Eintrag dort leeren.</div>
 					<div class="btns" style="margin-top:14px"><input type="email" id="testto" value="${esc(s.email)}" style="max-width:300px"><button class="btn" data-test>${icon('send')} Testmail senden</button></div>` : `
@@ -1713,7 +1713,8 @@
 					<label class="field c3"><span>Passwort <small>${S.mail.has_pass ? '(gespeichert – leer lassen, um es zu behalten)' : ''}</small></span><input type="password" name="smtp_pass" autocomplete="new-password" placeholder="${S.mail.has_pass ? '••••••••' : ''}"></label>
 					${f('smtp_from', 'Absenderadresse', { c: 'c3', type: 'email', attr: 'placeholder="leer = Benutzername"' })}
 					${f('smtp_from_name', 'Absendername', { c: 'c3', attr: `placeholder="${esc(s.company)}"` })}
-					${f('smtp_bcc', 'Kopie jeder Mail an (BCC)', { c: 'c6', small: 'z. B. deine eigene Adresse – mehrere mit Komma' })}
+					${f('smtp_reply_to', 'Antwort an', { c: 'c3', type: 'email', attr: `placeholder="${esc(s.email || 'leer = Absenderadresse')}"`, small: 'wohin Kunden antworten' })}
+					${f('smtp_bcc', 'Kopie jeder Mail an (BCC)', { c: 'c3', small: 'mehrere mit Komma' })}
 					<div class="c6 hint" id="smtphint">Das Passwort wird verschlüsselt gespeichert. Der Schlüssel liegt getrennt von der Datenbank, eine Datenbank-Sicherung enthält es also nie im Klartext. Verbindungen sind immer verschlüsselt, das Zertifikat des Servers wird geprüft.</div>
 				</div>
 				<div class="btns" style="margin-top:14px;justify-content:space-between">

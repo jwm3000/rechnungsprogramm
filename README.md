@@ -99,7 +99,7 @@ Das PDF entsteht direkt in PHP, ganz ohne Bibliothek:
 
 **Sicherheit & Betrieb**
 - Anmeldung mit Passwort, Sperre nach Fehlversuchen, CSRF-Schutz, strenge Content-Security-Policy
-- **E-Mail-Zugang direkt in den Einstellungen** – mit Schnellauswahl für Gmail, Microsoft 365, GMX, WEB.DE, iCloud und Testmail
+- **E-Mail-Zugang direkt in den Einstellungen** – mit Schnellauswahl für Gmail, Microsoft 365, GMX, WEB.DE, iCloud, eigener Antwortadresse, BCC-Kopie und Testmail
 - SMTP nur verschlüsselt mit Zertifikatsprüfung; das Passwort wird verschlüsselt gespeichert, der Schlüssel liegt getrennt von der Datenbank (Sicherungen enthalten es nie im Klartext)
 - Hochgeladene Logos werden bereinigt (nur Formen – keine Skripte, Links oder Texte)
 - Datenordner per `.htaccess` gesperrt (oder außerhalb des Webverzeichnisses)

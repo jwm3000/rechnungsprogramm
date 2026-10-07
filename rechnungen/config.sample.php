@@ -19,6 +19,7 @@ return array(
 		'from'      => 'rechnung@example.com',
 		'from_name' => '',
 		'bcc'       => '', // eigene Adresse: Kopie jeder versendeten Rechnung
+		'reply_to'  => '', // Antworten der Kunden an diese Adresse (leer = E-Mail aus den Firmendaten)
 	),
 
 	// Schlüssel für cron.php?key=… (leer = wird automatisch erzeugt und in den Einstellungen angezeigt)

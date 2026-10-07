@@ -204,8 +204,19 @@ function nw_smtp_config() {
 		'from'      => (string) ( $s['smtp_from'] ?? '' ),
 		'from_name' => (string) ( $s['smtp_from_name'] ?? '' ),
 		'bcc'       => (string) ( $s['smtp_bcc'] ?? '' ),
+		'reply_to'  => (string) ( $s['smtp_reply_to'] ?? '' ),
 		'source'    => 'app',
 	);
+}
+
+/** Antwortadresse: aus dem E-Mail-Zugang, sonst die E-Mail der Firmendaten (wenn sie vom Absender abweicht). */
+function nw_reply_to( array $cfg, $from ) {
+	$r = trim( (string) ( $cfg['reply_to'] ?? '' ) );
+	if ( nw_is_email( $r ) ) {
+		return $r;
+	}
+	$e = nw_setting( 'email' );
+	return nw_is_email( $e ) && strtolower( $e ) !== strtolower( (string) $from ) ? $e : '';
 }
 
 /* ==================================================================== Rechnungsmails */
@@ -292,7 +303,7 @@ function nw_mail_invoice( $id, $type = 'invoice', array $o = array() ) {
 			array(
 				'from'        => $from,
 				'from_name'   => $cfg['from_name'] ?: nw_setting( 'company' ),
-				'reply_to'    => nw_is_email( nw_setting( 'email' ) ) && nw_setting( 'email' ) !== $from ? nw_setting( 'email' ) : '',
+				'reply_to'    => nw_reply_to( $cfg, $from ),
 				'to'          => $to,
 				'cc'          => $cc,
 				'bcc'         => nw_emails( $cfg['bcc'] ),
