@@ -1,0 +1,9 @@
+rechnungen/config.php
+rechnungen/data/*
+!rechnungen/data/.htaccess
+!rechnungen/data/index.php
+!rechnungen/data/probe.txt
+Rechnungen-*/
+import/
+dist/
+demo/

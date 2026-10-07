@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# PHP 8.3 über Docker (lokal ist kein PHP installiert). Projektordner wird unter /app eingehängt.
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+exec docker run --rm -i --user "$(id -u):$(id -g)" -v "$DIR":/app -w /app php:8.3-cli php "$@"
