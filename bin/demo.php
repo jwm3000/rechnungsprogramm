@@ -169,6 +169,22 @@ foreach (
 }
 $billedT = nw_time_save( array( 'customer_id' => $c['hirsch']['id'], 'date' => '2026-09-12', 'hours' => 2, 'project' => 'Stammtisch', 'note' => 'Geburtstagsrunde betreut' ) );
 nw_time_mark( array( $billedT['id'] ), true );
+// Verrechnete Stunden der Vergangenheit – mit der nächsten Rechnung des Kunden bestätigt
+foreach (
+	array(
+		array( 'ffw', '2025-09-04', 5, 'Feuerwehrfest', 'Zapfanlage aufgebaut, Probezapfen' ),
+		array( 'ffw', '2025-09-05', 2.5, 'Feuerwehrfest', 'Abbau und Reinigung' ),
+		array( 'ffw', '2026-09-03', 4, 'Feuerwehrfest', 'Zapfanlage und Kühlwagen angeschlossen' ),
+		array( 'hirsch', '2025-11-20', 3, 'Stammtisch', 'Bierverkostung moderiert' ),
+		array( 'hirsch', '2026-03-12', 1.5, 'Stammtisch', 'Neue Zapfhähne eingestellt' ),
+		array( 'kegel', '2026-05-08', 2, 'Kegelabend', 'Schank bei der Vereinsmeisterschaft' ),
+		array( 'musik', '2025-07-18', 2, 'Sommerfest', 'Getränkeplanung – als Sponsoring nicht verrechnet', false ),
+	) as $h
+) {
+	$t   = nw_time_save( array( 'customer_id' => $c[ $h[0] ]['id'], 'date' => $h[1], 'hours' => $h[2], 'project' => $h[3], 'note' => $h[4] ) );
+	$iid = false === ( $h[5] ?? true ) ? null : q_val( "SELECT id FROM invoices WHERE customer_id = ? AND kind = 'invoice' AND status != 'draft' AND invoice_date >= ? ORDER BY invoice_date LIMIT 1", array( $c[ $h[0] ]['id'], $h[1] ) );
+	q( 'UPDATE time_entries SET billed = 1, billed_at = ?, invoice_id = ? WHERE id = ?', array( $h[1] . ' 18:00:00', $iid ?: null, $t['id'] ) );
+}
 
 // Ausgaben
 foreach (

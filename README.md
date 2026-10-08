@@ -85,7 +85,9 @@ Das PDF entsteht direkt in PHP, ohne Bibliothek:
 - Notizfeld „Was wurde gemacht?“ – erscheint auf Wunsch als Beschreibung auf der Rechnung
 - Eigene Seite mit Filtern, Wochen- und Monatssumme und **offenen Stunden je Kunde**; auch auf der Kundenseite und als Widget in der Übersicht
 - Im Rechnungs-Editor einblendbar, sobald der Kunde offene Stunden hat: Einträge wählen, Stundensatz (Standard oder je Kunde) – fertig ist die Position
-- Beim Ausstellen gelten die Stunden als **abgerechnet**; auch von Hand markierbar, Export als CSV
+- Oder **ohne Position bestätigen** (z. B. wenn sie in einer Pauschale stecken) – die Stunden hängen trotzdem an der Rechnung
+- Beim Ausstellen gelten die Stunden als **verrechnet** und werden bei keiner weiteren Rechnung mehr angeboten; auch von Hand markierbar und wieder zu öffnen
+- Reiter **Verrechnet**: gruppiert **nach Jahr** (mit Monatsbalken) oder **nach Rechnung**, dazu „Ohne Rechnung“ für von Hand markierte; Export als CSV
 
 **Kunden & Artikel**
 - Kundenstamm mit Umsatz, offenen Beträgen, Angeboten, Verlauf, eigener Zahlungsfrist

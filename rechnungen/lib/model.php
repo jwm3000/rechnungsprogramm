@@ -360,7 +360,9 @@ function nw_invoice_get( $id ) {
 	$r['converted'] = ! empty( $r['converted_id'] ) ? q_row( 'SELECT id, number, status FROM invoices WHERE id = ?', array( $r['converted_id'] ) ) : null;
 	$r['from_offer'] = q_row( "SELECT id, number FROM invoices WHERE kind = 'offer' AND converted_id = ?", array( $r['id'] ) );
 	$r['customer'] = $r['customer_id'] ? q_row( 'SELECT id, number, company, person, email, email_cc FROM customers WHERE id = ?', array( $r['customer_id'] ) ) : null;
-	$r['time_ids'] = array_map( 'intval', array_column( q_all( 'SELECT id FROM time_entries WHERE invoice_id = ?', array( $r['id'] ) ), 'id' ) );
+	$time          = q_all( 'SELECT id, hours FROM time_entries WHERE invoice_id = ?', array( $r['id'] ) );
+	$r['time_ids']   = array_map( 'intval', array_column( $time, 'id' ) );
+	$r['time_hours'] = round( array_sum( array_column( $time, 'hours' ) ), 2 );
 	$r['payments'] = q_all( 'SELECT id, date, amount, note FROM payments WHERE invoice_id = ? ORDER BY date, id', array( $r['id'] ) );
 	$r['mails']    = q_all( 'SELECT kind, to_addr, subject, ok, error, created_at FROM mail_log WHERE invoice_id = ? ORDER BY id DESC', array( $r['id'] ) );
 	$r['activity'] = q_all( 'SELECT text, created_at FROM activity WHERE invoice_id = ? ORDER BY id DESC LIMIT 30', array( $r['id'] ) );
@@ -834,7 +836,8 @@ function nw_time_list( array $f = array() ) {
 	return array_map(
 		'nw_time_row',
 		q_all(
-			"SELECT t.*, COALESCE(NULLIF(c.company,''), c.person) AS customer_name, i.number AS invoice_number, i.status AS invoice_status
+			"SELECT t.*, COALESCE(NULLIF(c.company,''), c.person) AS customer_name, i.number AS invoice_number, i.status AS invoice_status,
+				i.invoice_date, i.gross AS invoice_gross
 			FROM time_entries t LEFT JOIN customers c ON c.id = t.customer_id LEFT JOIN invoices i ON i.id = t.invoice_id
 			WHERE " . implode( ' AND ', $where ) . ' ORDER BY t.date DESC, t.id DESC LIMIT 2000',
 			$args

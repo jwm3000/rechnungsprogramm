@@ -41,6 +41,7 @@
 
 	/* Icons (Linienstil, 24er Raster) */
 	const ICONS = {
+		undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
 		home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>',
 		file: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>',
 		users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .7 3.2 2.4 3.5 5.2"/>',
@@ -981,6 +982,11 @@
 						</div>
 						<p class="muted" style="font-size:12.5px;margin-top:12px">Ausgestellte Rechnungen lassen sich nicht mehr ändern. Zum Korrigieren stornieren und eine Kopie neu ausstellen.</p>
 					</div>
+					${inv.time_ids?.length ? `<div class="card card-pad">
+						<h3 style="margin-bottom:6px">Stunden</h3>
+						<p style="margin:0 0 10px"><b class="num">${fmtH(inv.time_hours)}</b> <span class="muted">· ${inv.time_ids.length} Eintr${inv.time_ids.length === 1 ? 'ag' : 'äge'} ${inv.status === 'draft' ? 'werden mit dem Ausstellen verrechnet' : 'mit dieser Rechnung verrechnet'}</span></p>
+						<a class="btn sm" href="#/stunden?rechnung=${inv.id}">${icon('clock')} Stunden ansehen</a>
+					</div>` : ''}
 					${(inv.payments || []).length ? `<div class="card card-pad">
 						<h3 style="margin-bottom:6px">Zahlungen</h3>
 						<div class="list">${inv.payments.map((p) => `<div class="list-item"><div class="li-main"><div class="li-title num">${money(p.amount)}</div><div class="li-sub">${date(p.date)}${p.note ? ' · ' + esc(p.note) : ''}</div></div><button class="btn sm ghost icon" data-delpay="${p.id}" title="Zahlung löschen" aria-label="Zahlung löschen">${icon('trash')}</button></div>`).join('')}</div>
@@ -1244,12 +1250,13 @@
 			}
 			$('#totals').innerHTML = html;
 		};
-		const itemsCtl = itemsEditor($('#items'), ed.items, touch);
+		// Wird die Stunden-Position von Hand gelöscht, zeigt die Leiste „ohne Position bestätigt“
+		const itemsCtl = itemsEditor($('#items'), ed.items, () => { touch(); if (ed.time_ids?.length && hp.asItem !== hourItemIdx() >= 0) drawHours(); });
 		drawTotals();
 
 		/* Offene Stunden des Kunden: Leiste nur wenn vorhanden, ein-/ausblendbar, als Position übernehmen */
 		ed.time_ids = ed.time_ids || [];
-		let hp = { entries: [], rate: 0, open: false, pick: new Set(ed.time_ids), withNotes: true };
+		let hp = { entries: [], rate: 0, open: false, pick: new Set(ed.time_ids), withNotes: true, asItem: false };
 		const hourItemIdx = () => ed.items.findIndex((it) => it._hours);
 		const drawHours = () => {
 			const box = $('#hourpanel');
@@ -1259,9 +1266,11 @@
 			const picked = hp.entries.filter((t) => hp.pick.has(t.id));
 			const ph = picked.reduce((a, t) => a + t.hours, 0);
 			const taken = ed.time_ids.length > 0;
+			hp.asItem = hourItemIdx() >= 0;
+			const takenH = ed.time_ids.reduce((a, id) => a + (hp.entries.find((t) => t.id === id)?.hours || 0), 0);
 			box.innerHTML = `<div class="hourpanel ${hp.open ? 'open' : ''}">
 				<button type="button" class="hp-head" aria-expanded="${hp.open}" data-hp-toggle>
-					${icon('clock')}<span class="grow"><b>${fmtH(total)} offene Stunden</b> für diesen Kunden${taken ? ` · <span class="hp-taken">${fmtH(ed.time_ids.reduce((a, id) => a + (hp.entries.find((t) => t.id === id)?.hours || 0), 0))} übernommen</span>` : ''}</span>
+					${icon('clock')}<span class="grow"><b>${fmtH(total)} offene Stunden</b> für diesen Kunden${taken ? ` · <span class="hp-taken">${fmtH(takenH)} ${hp.asItem ? 'als Position übernommen' : 'bestätigt, ohne eigene Position'}</span>` : ''}</span>
 					<span class="muted">${hp.open ? 'Ausblenden' : 'Einblenden'}</span>${icon(hp.open ? 'up' : 'down')}
 				</button>
 				${hp.open ? `<div class="hp-body">
@@ -1272,15 +1281,21 @@
 						<label class="switch" style="font-size:13px"><input type="checkbox" id="hp-notes" ${hp.withNotes ? 'checked' : ''}> Notizen als Beschreibung</label>
 						<span class="grow"></span>
 						<span class="muted num">${fmtH(ph)} × ${money(num($('#hp-rate')?.value ?? hp.rate))}</span>
+					</div>
+					<div class="hp-actions">
 						${taken ? `<button type="button" class="btn sm ghost" data-hp-remove>Entfernen</button>` : ''}
-						<button type="button" class="btn sm primary" data-hp-take ${picked.length ? '' : 'disabled'}>${icon('plus')} ${taken ? 'Position aktualisieren' : 'Als Position übernehmen'}</button>
-					</div></div>` : ''}
+						<button type="button" class="btn sm" data-hp-confirm ${picked.length ? '' : 'disabled'} title="Die Stunden werden mit dieser Rechnung verrechnet, ohne eigene Position – z. B. wenn sie pauschal enthalten sind">${icon('check')} ${taken && !hp.asItem ? 'Bestätigung aktualisieren' : 'Ohne Position bestätigen'}</button>
+						<button type="button" class="btn sm primary" data-hp-take ${picked.length ? '' : 'disabled'}>${icon('plus')} ${taken && hp.asItem ? 'Position aktualisieren' : 'Als Position übernehmen'}</button>
+					</div>
+					${taken && !hp.asItem ? `<p class="hp-note">${icon('check')} Diese Stunden stehen nicht als eigene Position auf der Rechnung, gelten aber mit dem Ausstellen als verrechnet und werden bei keiner weiteren Rechnung mehr angeboten.</p>` : ''}
+					</div>` : ''}
 			</div>`;
 			$('[data-hp-toggle]', box).onclick = () => { hp.open = !hp.open; drawHours(); };
 			$$('[data-hp]', box).forEach((c) => (c.onchange = () => { c.checked ? hp.pick.add(+c.dataset.hp) : hp.pick.delete(+c.dataset.hp); drawHours(); }));
 			$('#hp-rate', box)?.addEventListener('change', (e) => { hp.rate = num(e.target.value); drawHours(); });
 			$('#hp-notes', box)?.addEventListener('change', (e) => { hp.withNotes = e.target.checked; });
 			$('[data-hp-take]', box)?.addEventListener('click', () => takeHours());
+			$('[data-hp-confirm]', box)?.addEventListener('click', () => confirmHours());
 			$('[data-hp-remove]', box)?.addEventListener('click', () => {
 				const i = hourItemIdx(); if (i >= 0) ed.items.splice(i, 1);
 				if (!ed.items.length) ed.items.push(blankItem());
@@ -1302,6 +1317,15 @@
 			ed.time_ids = picked.map((t) => t.id);
 			itemsCtl.redraw(); touch(); drawHours();
 			toast(fmtH(item.qty) + ' als Position übernommen – beim Ausstellen gelten sie als abgerechnet');
+		};
+		const confirmHours = () => {
+			const picked = hp.entries.filter((t) => hp.pick.has(t.id));
+			if (!picked.length) return;
+			const i = hourItemIdx();
+			if (i >= 0) { ed.items.splice(i, 1); if (!ed.items.length) ed.items.push(blankItem()); itemsCtl.redraw(); }
+			ed.time_ids = picked.map((t) => t.id);
+			touch(); drawHours();
+			toast(fmtH(picked.reduce((a, t) => a + t.hours, 0)) + ' bestätigt – mit dem Ausstellen verrechnet, ohne eigene Position');
 		};
 		const loadHours = async (auto) => {
 			if (isOffer || !ed.customer_id) { hp.entries = []; drawHours(); return; }
@@ -1587,7 +1611,7 @@
 		return isNaN(+v) ? 0 : Math.round(+v * 100) / 100;
 	};
 	const fmtH = (h) => qty(Math.round(h * 100) / 100) + ' h';
-	const HOUR_STATE = { open: ['offen', 'b-open'], draft: ['im Entwurf', 'b-draft'], billed: ['abgerechnet', 'b-paid'] };
+	const HOUR_STATE = { open: ['offen', 'b-open'], draft: ['im Entwurf', 'b-draft'], billed: ['verrechnet', 'b-paid'] };
 	const hourBadge = (t) => `<span class="badge ${HOUR_STATE[t.state][1]}">${HOUR_STATE[t.state][0]}${t.invoice_number ? ' · ' + esc(t.invoice_number) : ''}</span>`;
 
 	/* Stoppuhr: läuft im Browser weiter (auch nach Neuladen), pro Gerät */
@@ -1665,23 +1689,29 @@
 	async function viewHours(q) {
 		const main = $('#main');
 		let data = await api('hours');
-		let f = q.f || store.get('hours.f', 'open'), cust = q.kunde ? +q.kunde : 0, search = '';
+		let tab = q.f === 'billed' || q.rechnung ? 'billed' : 'open';
+		let group = q.rechnung ? 'invoice' : q.g || store.get('hours.g', 'year');
+		let cust = q.kunde ? +q.kunde : 0, search = '', focus = q.rechnung ? 'i' + q.rechnung : '';
 		const sel = new Set();
+		const opened = new Set(focus ? [focus] : []);
+		const sumH = (rows) => rows.reduce((a, t) => a + t.hours, 0);
+		const isBilled = (t) => t.state === 'billed';
+		const MON = ['Jän', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 		main.innerHTML = `<div class="page">
 			${pageHead('Stunden', { sub: 'Zeit für Kunden und Projekte mitschreiben – und mit einem Klick abrechnen' }, `<a class="btn" href="api.php?a=export_hours">${icon('download')} CSV</a>`)}
 			<div class="grid g-main">
 				<div class="grid" style="align-content:start">
 					<section class="card card-pad"><h2 style="margin-bottom:14px">Stunden erfassen</h2><div id="hform"></div></section>
 					<section class="card">
-						<div class="card-head"><h2>Einträge</h2></div>
-						<div class="card-body" style="padding-top:10px">
-							<div class="toolbar" style="margin-bottom:10px">
-								<div class="chips" id="hchips"></div><div class="grow"></div>
-								<select id="hcust" style="width:auto;max-width:220px"></select>
-								<label class="search" style="min-width:160px"><span class="sr">Suchen</span>${icon('search')}<input type="search" id="hq" placeholder="Notiz, Projekt …"></label>
+						<nav class="tabs hours-tabs" id="htabs" role="tablist" aria-label="Stunden"></nav>
+						<div class="card-body" style="padding-top:14px">
+							<div class="toolbar" style="margin-bottom:12px">
+								<div id="hgroup"></div><div class="grow"></div>
+								<select id="hcust" style="width:auto;max-width:220px" aria-label="Kunde"></select>
+								<label class="search" style="min-width:160px"><span class="sr">Suchen</span>${icon('search')}<input type="search" id="hq" placeholder="Notiz, Projekt, Rechnung …"></label>
 							</div>
 							<div id="hbulk"></div>
-							<div class="table-wrap" id="hlist"></div>
+							<div id="hlist"></div>
 						</div>
 					</section>
 				</div>
@@ -1691,6 +1721,8 @@
 		hourForm($('#hform'), { projects: data.summary.projects, id: 'p', onSaved: reload });
 		const side = () => {
 			const sm = data.summary;
+			const y = String(new Date().getFullYear());
+			const billedY = sumH(data.entries.filter((t) => isBilled(t) && t.date.startsWith(y)));
 			$('#hside').innerHTML = `
 				<div class="grid g2" style="gap:12px">
 					<div class="card kpi"><div class="label">Diese Woche</div><div class="value num">${fmtH(sm.week)}</div></div>
@@ -1702,45 +1734,112 @@
 						<div class="list-item"><div class="li-main"><div class="li-title"><a href="#/kunde/${o.customer_id}" style="text-decoration:none">${esc(o.customer_name)}</a></div>
 							<div class="li-sub" style="white-space:normal">${fmtH(o.hours)}${o.rate ? ' · <b>' + money(o.value) + '</b>' : ''} · ${o.entries} Eintr${o.entries === 1 ? 'ag' : 'äge'} seit ${date(o.since)}</div></div>
 							<a class="btn sm" href="#/rechnung/neu?kunde=${o.customer_id}&stunden=1" title="Rechnung mit diesen Stunden erstellen">${icon('file')} Rechnung</a>
-						</div>`).join('')}</div>` : '<div class="empty"><span class="big">[ ✓ ]</span>Alles abgerechnet.</div>'}</div>
+						</div>`).join('')}</div>` : '<div class="empty"><span class="big">[ ✓ ]</span>Alles verrechnet.</div>'}</div>
 				</section>
+				<div class="card kpi"><div class="label">Verrechnet ${y}</div><div class="value num">${fmtH(billedY)}</div><div class="sub"><button type="button" class="linkish" data-showbilled>Verrechnete Stunden ansehen</button></div></div>
 				${sm.rate ? '' : `<div class="hint">Tipp: Unter <a href="#/einstellungen/nummern">Einstellungen → Nummern & Steuer</a> einen Standard-Stundensatz eintragen, pro Kunde lässt er sich überschreiben.</div>`}`;
+			$('[data-showbilled]').onclick = () => { tab = 'billed'; sel.clear(); draw(); $('#htabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 		};
+		const matches = (t, n) => !n || norm([t.note, t.project, t.customer_name, t.invoice_number].join(' ')).includes(n);
+
+		/* Offene Einträge: Tabelle mit Auswahl */
+		const openTable = (rows) => rows.length ? `<div class="table-wrap"><table class="table resp"><thead><tr><th style="width:36px"><input type="checkbox" id="hall" aria-label="Alle auswählen"></th><th>Datum</th><th>Kunde · Projekt</th><th class="th-r">Dauer</th><th>Status</th></tr></thead><tbody>
+			${rows.map((t) => `<tr class="click" data-id="${t.id}">
+				<td class="m-a"><input type="checkbox" data-sel="${t.id}" ${sel.has(t.id) ? 'checked' : ''} aria-label="Auswählen"></td>
+				<td class="m-c muted nowrap">${date(t.date)}</td>
+				<td class="m-b strong">${esc(t.customer_name)}${t.project ? ` <span class="muted" style="font-weight:500">· ${esc(t.project)}</span>` : ''}<div class="sub" style="white-space:normal;max-width:none">${esc(t.note)}</div></td>
+				<td class="m-d td-r num strong">${fmtH(t.hours)}</td>
+				<td class="m-e">${t.state === 'draft' ? `<a class="badge b-draft" href="#/rechnung/${t.invoice_id}" title="In einem Rechnungsentwurf – mit dem Ausstellen verrechnet">im Entwurf</a>` : hourBadge(t)}</td></tr>`).join('')}</tbody></table></div>
+			<div class="sumbar"><span>${rows.length} Einträge</span><span>Summe <b class="num">${fmtH(sumH(rows))}</b></span></div>`
+			: `<div class="empty"><span class="big">[ ✓ ]</span>${search || cust ? 'Keine passenden offenen Stunden.' : 'Keine offenen Stunden – alles verrechnet.'}</div>`;
+
+		/* Verrechnete Einträge: gruppiert nach Jahr oder nach Rechnung */
+		const billedGroups = (rows) => {
+			const map = new Map();
+			rows.forEach((t) => {
+				const k = group === 'year' ? 'y' + t.date.slice(0, 4) : t.invoice_id ? 'i' + t.invoice_id : 'm';
+				if (!map.has(k)) map.set(k, []);
+				map.get(k).push(t);
+			});
+			const list = [...map.entries()].map(([k, es]) => ({ k, es, t: es[0], h: sumH(es) }));
+			if (group === 'year') list.sort((a, b) => b.k.localeCompare(a.k));
+			else list.sort((a, b) => (a.k === 'm') - (b.k === 'm') || String(b.t.invoice_date).localeCompare(String(a.t.invoice_date)) || (+b.t.invoice_number || 0) - (+a.t.invoice_number || 0));
+			return list;
+		};
+		const groupHead = (g) => {
+			const custs = new Set(g.es.map((t) => t.customer_id)).size;
+			if (group === 'year') {
+				const invs = new Set(g.es.filter((t) => t.invoice_id).map((t) => t.invoice_id)).size;
+				return `<span class="hg-title num">${g.k.slice(1)}</span>
+					<span class="hg-meta">${g.es.length} Eintr${g.es.length === 1 ? 'ag' : 'äge'} · ${custs} Kunde${custs === 1 ? '' : 'n'} · ${invs} Rechnung${invs === 1 ? '' : 'en'}</span>`;
+			}
+			if (g.k === 'm') return `<span class="hg-title">Ohne Rechnung</span><span class="hg-meta">von Hand als verrechnet markiert · ${custs} Kunde${custs === 1 ? '' : 'n'}</span>`;
+			return `<span class="hg-title">Rechnung <span class="mono">${esc(g.t.invoice_number)}</span></span>
+				<span class="hg-meta">${esc(g.t.customer_name)} · ${date(g.t.invoice_date)}${g.t.invoice_status === 'cancelled' ? ' · storniert' : ''}</span>
+`;
+		};
+		const groupLink = (g) => group === 'invoice' && g.k !== 'm' ? `<a class="btn sm ghost hg-open" href="#/rechnung/${g.t.invoice_id}" title="Rechnung öffnen">${icon('file')} ${money(g.t.invoice_gross)}</a>` : '';
+		const months = (es) => {
+			const m = Array(12).fill(0);
+			es.forEach((t) => (m[+t.date.slice(5, 7) - 1] += t.hours));
+			const max = Math.max(...m) || 1;
+			return `<div class="hg-months" aria-label="Stunden je Monat">${m.map((h, i) => `<div class="hg-m ${h ? '' : 'zero'}" title="${MON[i]}: ${fmtH(h)}"><i style="height:${Math.max(h ? 6 : 2, Math.round((h / max) * 100))}%"></i><span>${MON[i]}</span></div>`).join('')}</div>`;
+		};
+		const billedRow = (t) => `<div class="hg-row" data-id="${t.id}">
+			${t.invoice_id ? '<span class="hg-chk"></span>' : `<input type="checkbox" data-sel="${t.id}" ${sel.has(t.id) ? 'checked' : ''} aria-label="Auswählen">`}
+			<span class="mono muted hg-date">${date(t.date)}</span>
+			<div class="hg-main"><div class="hg-what">${group === 'invoice' && t.invoice_id ? '' : `<b>${esc(t.customer_name)}</b>`}${t.project ? `${group === 'invoice' && t.invoice_id ? '<b>' + esc(t.project) + '</b>' : ' <span class="muted">· ' + esc(t.project) + '</span>'}` : ''}</div>
+				${t.note ? `<div class="hg-note">${esc(t.note)}</div>` : ''}</div>
+			${group === 'year' ? (t.invoice_id ? `<a class="hg-inv" href="#/rechnung/${t.invoice_id}">${icon('file')} ${esc(t.invoice_number)}</a>` : '<span class="hg-inv manual">von Hand</span>') : ''}
+			<b class="num hg-h">${fmtH(t.hours)}</b></div>`;
+		const billedView = (rows) => {
+			if (!rows.length) return `<div class="empty"><span class="big">[ ]</span>${search || cust ? 'Keine passenden verrechneten Stunden.' : 'Noch keine Stunden verrechnet. Offene Stunden übernimmst du im Rechnungs-Editor – als Position oder nur bestätigt.'}</div>`;
+			const list = billedGroups(rows);
+			if (!list.some((g) => opened.has(g.k))) opened.add(list[0].k);
+			return `<div class="hgroups">${list.map((g) => `<details class="hgroup" data-gk="${g.k}" ${opened.has(g.k) ? 'open' : ''}>
+				<summary>${icon('right')}<span class="hg-head">${groupHead(g)}</span>${groupLink(g)}<b class="num hg-sum">${fmtH(g.h)}</b></summary>
+				<div class="hg-body">${group === 'year' ? months(g.es) : ''}${g.es.map(billedRow).join('')}</div>
+			</details>`).join('')}</div>
+			<div class="sumbar"><span>${rows.length} Einträge in ${list.length} ${group === 'year' ? (list.length === 1 ? 'Jahr' : 'Jahren') : list.length === 1 ? 'Gruppe' : 'Gruppen'}</span><span>Summe <b class="num">${fmtH(sumH(rows))}</b></span></div>`;
+		};
+
 		const draw = () => {
-			store.set('hours.f', f);
 			const all = data.entries;
-			const filters = [['open', 'Offen'], ['billed', 'Abgerechnet'], ['all', 'Alle']];
 			const base = all.filter((t) => !cust || +t.customer_id === cust);
-			$('#hchips').innerHTML = filters.map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-f="${k}">${l} <span class="n">${base.filter((t) => k === 'all' || (k === 'open' ? t.state !== 'billed' : t.state === 'billed')).length}</span></button>`).join('');
-			$$('#hchips .chip').forEach((c) => (c.onclick = () => { f = c.dataset.f; sel.clear(); draw(); }));
+			const open = base.filter((t) => !isBilled(t)), billed = base.filter(isBilled);
+			$('#htabs').innerHTML = [['open', 'Offen', open], ['billed', 'Verrechnet', billed]].map(([k, l, r]) =>
+				`<button type="button" role="tab" aria-selected="${tab === k}" class="${tab === k ? 'on' : ''}" data-tab="${k}">${l} <span class="n">${fmtH(sumH(r))}</span></button>`).join('');
+			$$('#htabs [data-tab]').forEach((b) => (b.onclick = () => { tab = b.dataset.tab; sel.clear(); draw(); }));
+			$('#hgroup').innerHTML = tab === 'billed' ? `<div class="seg" role="group" aria-label="Gruppieren">${[['year', 'Nach Jahr'], ['invoice', 'Nach Rechnung']].map(([k, l]) => `<button type="button" data-g="${k}" class="${group === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : '';
+			$$('#hgroup [data-g]').forEach((b) => (b.onclick = () => { group = b.dataset.g; store.set('hours.g', group); opened.clear(); draw(); }));
 			const custs = [...new Map(all.map((t) => [+t.customer_id, t.customer_name])).entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
 			$('#hcust').innerHTML = `<option value="0">Alle Kunden</option>` + custs.map(([id, n]) => `<option value="${id}" ${id === cust ? 'selected' : ''}>${esc(n)}</option>`).join('');
 			const n = norm(search);
-			const rows = base.filter((t) => (f === 'all' || (f === 'open' ? t.state !== 'billed' : t.state === 'billed')) && (!n || norm(t.note + ' ' + t.project + ' ' + t.customer_name).includes(n)));
-			const sum = rows.reduce((a, t) => a + t.hours, 0);
-			$('#hlist').innerHTML = rows.length ? `<table class="table resp"><thead><tr><th style="width:36px"><input type="checkbox" id="hall" aria-label="Alle offenen auswählen"></th><th>Datum</th><th>Kunde · Projekt</th><th class="th-r">Dauer</th><th>Status</th></tr></thead><tbody>
-				${rows.map((t) => `<tr class="click" data-id="${t.id}">
-					<td class="m-a">${t.state === 'billed' ? '' : `<input type="checkbox" data-sel="${t.id}" ${sel.has(t.id) ? 'checked' : ''} aria-label="Auswählen">`}</td>
-					<td class="m-c muted nowrap">${date(t.date)}</td>
-					<td class="m-b strong">${esc(t.customer_name)}${t.project ? ` <span class="muted" style="font-weight:500">· ${esc(t.project)}</span>` : ''}<div class="sub" style="white-space:normal;max-width:none">${esc(t.note)}</div></td>
-					<td class="m-d td-r num strong">${fmtH(t.hours)}</td>
-					<td class="m-e">${hourBadge(t)}</td></tr>`).join('')}</tbody></table>
-				<div class="sumbar"><span>${rows.length} Einträge</span><span>Summe <b class="num">${fmtH(sum)}</b></span></div>`
-				: `<div class="empty"><span class="big">[ ]</span>${f === 'open' ? 'Keine offenen Stunden.' : 'Keine Einträge.'}</div>`;
-			$$('#hlist tr[data-id]').forEach((tr) => (tr.onclick = (e) => { if (e.target.closest('input')) return; hourDrawer(data.entries.find((t) => t.id === +tr.dataset.id), reload); }));
+			const rows = (tab === 'open' ? open : billed).filter((t) => matches(t, n));
+			$('#hlist').innerHTML = tab === 'open' ? openTable(rows) : billedView(rows);
+			$$('#hlist [data-id]').forEach((el) => (el.onclick = (e) => { if (e.target.closest('input, a')) return; hourDrawer(data.entries.find((t) => t.id === +el.dataset.id), reload); }));
 			$$('#hlist [data-sel]').forEach((c) => (c.onchange = () => { c.checked ? sel.add(+c.dataset.sel) : sel.delete(+c.dataset.sel); bulk(); }));
-			$('#hall')?.addEventListener('change', (e) => { rows.filter((t) => t.state !== 'billed').forEach((t) => (e.target.checked ? sel.add(t.id) : sel.delete(t.id))); draw(); });
+			$$('#hlist details.hgroup').forEach((d) => d.addEventListener('toggle', () => (d.open ? opened.add(d.dataset.gk) : opened.delete(d.dataset.gk))));
+			$('#hall')?.addEventListener('change', (e) => { rows.forEach((t) => (e.target.checked ? sel.add(t.id) : sel.delete(t.id))); draw(); });
+			if (focus) { $(`#hlist [data-gk="${focus}"]`)?.scrollIntoView({ block: 'center' }); focus = ''; }
 			bulk();
 		};
 		const bulk = () => {
 			const picked = data.entries.filter((t) => sel.has(t.id));
+			const h = fmtH(sumH(picked));
 			const one = [...new Set(picked.map((t) => +t.customer_id))];
-			$('#hbulk').innerHTML = picked.length ? `<div class="bulkbar"><b>${picked.length} ausgewählt · ${fmtH(picked.reduce((a, t) => a + t.hours, 0))}</b><span class="grow"></span>
-				${one.length === 1 ? `<a class="btn sm primary" href="#/rechnung/neu?kunde=${one[0]}&stunden=${[...sel].join('.')}">${icon('file')} Rechnung erstellen</a>` : ''}
-				<button class="btn sm" data-markbilled>${icon('check')} Als abgerechnet markieren</button></div>` : '';
+			if (!picked.length) { $('#hbulk').innerHTML = ''; return; }
+			$('#hbulk').innerHTML = tab === 'open'
+				? `<div class="bulkbar"><b>${picked.length} ausgewählt · ${h}</b><span class="grow"></span>
+					${one.length === 1 ? `<a class="btn sm primary" href="#/rechnung/neu?kunde=${one[0]}&stunden=${[...sel].join('.')}">${icon('file')} Rechnung erstellen</a>` : ''}
+					<button class="btn sm" data-markbilled>${icon('check')} Als verrechnet markieren</button></div>`
+				: `<div class="bulkbar"><b>${picked.length} ausgewählt · ${h}</b><span class="grow"></span><button class="btn sm" data-reopen>${icon('undo')} Wieder öffnen</button></div>`;
 			$('[data-markbilled]', main)?.addEventListener('click', async () => {
-				if (!await confirmDialog('Als abgerechnet markieren?', `${picked.length} Einträge werden ohne Rechnung als abgerechnet markiert (z. B. bar bezahlt oder pauschal verrechnet).`, 'Markieren')) return;
-				try { await api('hours_mark', { ids: [...sel], billed: 1 }); sel.clear(); toast('Als abgerechnet markiert'); reload(); } catch (e) { fail(e); }
+				if (!await confirmDialog('Als verrechnet markieren?', `${picked.length} Einträge (${h}) werden ohne Rechnung als verrechnet markiert – z. B. bar bezahlt oder pauschal verrechnet. Sie erscheinen unter „Verrechnet“ in der Gruppe „Ohne Rechnung“.`, 'Markieren')) return;
+				try { await api('hours_mark', { ids: [...sel], billed: 1 }); sel.clear(); toast('Als verrechnet markiert'); reload(); } catch (e) { fail(e); }
+			});
+			$('[data-reopen]', main)?.addEventListener('click', async () => {
+				try { await api('hours_mark', { ids: [...sel], billed: 0 }); sel.clear(); toast(`${h} wieder offen`); reload(); } catch (e) { fail(e); }
 			});
 		};
 		$('#hcust').onchange = (e) => { cust = +e.target.value; sel.clear(); draw(); };
@@ -1816,7 +1915,7 @@
 								<button type="button" class="list-item hour-item" data-hid="${t.id}"><span class="mono muted">${date(t.date)}</span>
 									<div class="li-main"><div class="li-title">${t.project ? esc(t.project) : '<span class="muted">Ohne Projekt</span>'}</div><div class="li-sub">${esc(t.note)}</div></div>
 									${hourBadge(t)}<b class="num">${fmtH(t.hours)}</b></button>`).join('')}</div>
-								${c.hours.length > 8 ? `<a class="btn sm ghost" href="#/stunden?kunde=${c.id}&f=all" style="margin-top:8px">Alle ${c.hours.length} Einträge ${icon('right')}</a>` : ''}` : ''}
+								${c.hours.length > 8 ? `<a class="btn sm ghost" href="#/stunden?kunde=${c.id}" style="margin-top:8px">Alle ${c.hours.length} Einträge ${icon('right')}</a>` : ''}` : ''}
 						</div></section>`;
 				})()}
 				</div>

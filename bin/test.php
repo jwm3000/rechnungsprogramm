@@ -141,6 +141,12 @@ nw_invoice_issue( $dr['id'] );
 eq( nw_time_get( $t1['id'] )['state'], 'billed', 'beim Ausstellen abgerechnet' );
 throws( function () use ( $t1 ) { nw_time_save( array( 'id' => $t1['id'], 'customer_id' => $t1['customer_id'], 'hours' => 5 ) ); }, 'abgerechnete Dauer nicht änderbar' );
 throws( function () use ( $t1 ) { nw_time_delete( $t1['id'] ); }, 'abgerechnete Stunden nicht löschbar' );
+$tc = nw_time_save( array( 'customer_id' => $c['id'], 'hours' => '2' ) );
+$pa = nw_invoice_save( array( 'customer_id' => $c['id'], 'items' => array( array( 'name' => 'Pauschale', 'qty' => 1, 'price' => 300 ) ), 'time_ids' => array( $tc['id'] ) ) );
+eq( array( $pa['time_hours'], count( $pa['items'] ) ), array( 2.0, 1 ), 'Stunden ohne eigene Position bestätigt' );
+nw_invoice_issue( $pa['id'] );
+eq( array( nw_time_get( $tc['id'] )['state'], (int) nw_time_get( $tc['id'] )['invoice_id'] ), array( 'billed', (int) $pa['id'] ), 'bestätigte Stunden mit der Rechnung verrechnet' );
+ok( ! in_array( $tc['id'], array_column( nw_time_list( array( 'state' => 'open' ) ), 'id' ), true ), 'bestätigte Stunden nicht mehr offen' );
 eq( nw_time_mark( array( $t3['id'] ), true ), 1, 'von Hand als abgerechnet markiert' );
 eq( nw_time_mark( array( $t3['id'] ), false ), 1, 'wieder geöffnet' );
 
