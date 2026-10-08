@@ -116,6 +116,7 @@ function nw_customer_save( array $d ) {
 		}
 	}
 	$row['payment_days'] = isset( $d['payment_days'] ) && '' !== (string) $d['payment_days'] ? max( 0, (int) $d['payment_days'] ) : null;
+	$row['hour_rate']    = isset( $d['hour_rate'] ) && '' !== trim( (string) $d['hour_rate'] ) ? max( 0, round( (float) str_replace( ',', '.', (string) $d['hour_rate'] ), 2 ) ) : null;
 	$row['archived']     = empty( $d['archived'] ) ? 0 : 1;
 	$row['updated_at']   = nw_now();
 	$number              = trim( (string) ( $d['number'] ?? '' ) );
@@ -359,6 +360,7 @@ function nw_invoice_get( $id ) {
 	$r['converted'] = ! empty( $r['converted_id'] ) ? q_row( 'SELECT id, number, status FROM invoices WHERE id = ?', array( $r['converted_id'] ) ) : null;
 	$r['from_offer'] = q_row( "SELECT id, number FROM invoices WHERE kind = 'offer' AND converted_id = ?", array( $r['id'] ) );
 	$r['customer'] = $r['customer_id'] ? q_row( 'SELECT id, number, company, person, email, email_cc FROM customers WHERE id = ?', array( $r['customer_id'] ) ) : null;
+	$r['time_ids'] = array_map( 'intval', array_column( q_all( 'SELECT id FROM time_entries WHERE invoice_id = ?', array( $r['id'] ) ), 'id' ) );
 	$r['payments'] = q_all( 'SELECT id, date, amount, note FROM payments WHERE invoice_id = ? ORDER BY date, id', array( $r['id'] ) );
 	$r['mails']    = q_all( 'SELECT kind, to_addr, subject, ok, error, created_at FROM mail_log WHERE invoice_id = ? ORDER BY id DESC', array( $r['id'] ) );
 	$r['activity'] = q_all( 'SELECT text, created_at FROM activity WHERE invoice_id = ? ORDER BY id DESC LIMIT 30', array( $r['id'] ) );
@@ -505,6 +507,9 @@ function nw_invoice_save( array $d ) {
 			$it['invoice_id'] = $id;
 			nw_insert( 'invoice_items', $it );
 		}
+		if ( isset( $d['time_ids'] ) && is_array( $d['time_ids'] ) ) {
+			nw_time_link( $id, $row['customer_id'], $d['time_ids'] );
+		}
 		db()->commit();
 	} catch ( Throwable $e ) {
 		db()->rollBack();
@@ -550,6 +555,12 @@ function nw_invoice_issue( $id ) {
 	} catch ( Throwable $e ) {
 		db()->rollBack();
 		throw $e;
+	}
+	if ( ! $offer ) {
+		$n = q( 'UPDATE time_entries SET billed = 1, billed_at = ? WHERE invoice_id = ? AND billed = 0', array( nw_now(), $id ) )->rowCount();
+		if ( $n ) {
+			nw_log( $n . ' Stundeneinträge abgerechnet', $id, $inv['customer_id'] );
+		}
 	}
 	nw_log( ( $offer ? 'Angebot ' : 'Rechnung ' ) . $number . ' ausgestellt', $id, $inv['customer_id'] );
 	return nw_invoice_get( $id );
@@ -733,13 +744,195 @@ function nw_offer_convert( $id ) {
 	return nw_invoice_get( $inv['id'] );
 }
 
+/**
+ * Rechnung, Angebot oder Entwurf löschen. War es die zuletzt vergebene Nummer, wird sie wieder frei;
+ * sonst bleibt die Lücke und es wird weitergezählt. Verknüpfungen (Storno, Angebot, Stunden, Zahlungen) werden aufgelöst.
+ *
+ * @return array{number:?string, reused:bool}
+ */
 function nw_invoice_delete( $id ) {
 	$inv = nw_invoice_get( $id );
-	if ( 'draft' !== $inv['status'] ) {
-		nw_fail( 'Ausgestellte Rechnungen können nicht gelöscht werden – bitte stornieren.' );
+	if ( $inv['storno'] ) {
+		nw_fail( 'Zu dieser Rechnung gibt es die Stornorechnung ' . $inv['storno']['number'] . ' – bitte zuerst diese löschen.' );
 	}
-	q( 'DELETE FROM invoices WHERE id = ?', array( (int) $id ) );
-	q( 'DELETE FROM activity WHERE invoice_id = ?', array( (int) $id ) );
+	$reused = false;
+	db()->beginTransaction();
+	try {
+		if ( 'storno' === $inv['kind'] && $inv['ref_id'] ) {
+			nw_update( 'invoices', (int) $inv['ref_id'], array( 'status' => 'issued', 'updated_at' => nw_now() ) ); // Storno weg → Original gilt wieder
+			nw_log( 'Stornorechnung ' . $inv['number'] . ' gelöscht – Rechnung gilt wieder', (int) $inv['ref_id'], $inv['customer_id'] );
+		}
+		q( "UPDATE invoices SET converted_id = NULL, offer_state = 'open' WHERE converted_id = ?", array( $inv['id'] ) );
+		q( 'UPDATE recurring SET last_invoice_id = NULL WHERE last_invoice_id = ?', array( $inv['id'] ) );
+		q( 'UPDATE time_entries SET invoice_id = NULL, billed = 0, billed_at = NULL WHERE invoice_id = ?', array( $inv['id'] ) );
+		q( 'UPDATE mail_log SET invoice_id = NULL WHERE invoice_id = ?', array( $inv['id'] ) );
+		q( 'DELETE FROM activity WHERE invoice_id = ?', array( $inv['id'] ) );
+		q( 'DELETE FROM invoices WHERE id = ?', array( $inv['id'] ) ); // Positionen und Zahlungen werden mitgelöscht
+
+		// Nummernkreis: nur die zuletzt vergebene Nummer wird wieder frei
+		$n = (string) $inv['number'];
+		if ( '' !== $n ) {
+			if ( 'offer' === $inv['kind'] && preg_match( '/^A-(\d+)$/', $n, $m ) ) {
+				if ( (int) nw_setting( 'next_offer' ) === (int) $m[1] + 1 ) {
+					nw_set_setting( 'next_offer', $m[1] );
+					$reused = true;
+				}
+			} elseif ( ctype_digit( $n ) && (int) nw_setting( 'next_number' ) === (int) $n + 1
+				&& ! q_val( "SELECT 1 FROM invoices WHERE number GLOB '[0-9]*' AND CAST(number AS INTEGER) > ?", array( (int) $n ) ) ) {
+				nw_set_setting( 'next_number', $n );
+				$reused = true;
+			}
+		}
+		db()->commit();
+	} catch ( Throwable $e ) {
+		db()->rollBack();
+		throw $e;
+	}
+	$what = 'offer' === $inv['kind'] ? 'Angebot' : ( 'storno' === $inv['kind'] ? 'Stornorechnung' : 'Rechnung' );
+	nw_log( 'draft' === $inv['status'] ? $what . 'sentwurf gelöscht' : $what . ' ' . $inv['number'] . ' gelöscht' . ( $reused ? ' – Nummer wird wieder vergeben' : '' ), null, $inv['customer_id'] );
+	return array( 'number' => $inv['number'], 'reused' => $reused );
+}
+
+/* ==================================================================== Stunden */
+
+/** „1,5“, „1.5“, „1:30“, „90m“, „2h“, „1h 15m“ → Stunden. */
+function nw_parse_hours( $v ) {
+	$v = strtolower( trim( str_replace( ',', '.', (string) $v ) ) );
+	if ( preg_match( '/^(\d+):(\d{1,2})$/', $v, $m ) ) {
+		return round( (int) $m[1] + (int) $m[2] / 60, 2 );
+	}
+	if ( preg_match( '/^(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+)\s*m(?:in)?)?$/', $v, $m ) && '' !== $v && ( ! empty( $m[1] ) || ! empty( $m[2] ) ) ) {
+		return round( (float) ( $m[1] ?? 0 ) + (int) ( $m[2] ?? 0 ) / 60, 2 );
+	}
+	return is_numeric( $v ) ? round( (float) $v, 2 ) : 0.0;
+}
+
+function nw_hour_rate( $customer_id ) {
+	$c = $customer_id ? q_row( 'SELECT hour_rate FROM customers WHERE id = ?', array( (int) $customer_id ) ) : null;
+	return null !== ( $c['hour_rate'] ?? null ) ? (float) $c['hour_rate'] : (float) str_replace( ',', '.', nw_setting( 'hour_rate' ) ?: '0' );
+}
+
+function nw_time_row( array $r ) {
+	$r['hours'] = (float) $r['hours'];
+	$r['state'] = $r['billed'] ? 'billed' : ( $r['invoice_id'] ? 'draft' : 'open' );
+	return $r;
+}
+
+/** Einträge: customer_id, state (open|billed|all), from, to. */
+function nw_time_list( array $f = array() ) {
+	$where = array( '1=1' );
+	$args  = array();
+	if ( ! empty( $f['customer_id'] ) ) {
+		$where[] = 't.customer_id = ?';
+		$args[]  = (int) $f['customer_id'];
+	}
+	if ( 'open' === ( $f['state'] ?? '' ) ) {
+		$where[] = 't.billed = 0';
+	} elseif ( 'billed' === ( $f['state'] ?? '' ) ) {
+		$where[] = 't.billed = 1';
+	}
+	return array_map(
+		'nw_time_row',
+		q_all(
+			"SELECT t.*, COALESCE(NULLIF(c.company,''), c.person) AS customer_name, i.number AS invoice_number, i.status AS invoice_status
+			FROM time_entries t LEFT JOIN customers c ON c.id = t.customer_id LEFT JOIN invoices i ON i.id = t.invoice_id
+			WHERE " . implode( ' AND ', $where ) . ' ORDER BY t.date DESC, t.id DESC LIMIT 2000',
+			$args
+		)
+	);
+}
+
+function nw_time_get( $id ) {
+	$r = q_row( 'SELECT * FROM time_entries WHERE id = ?', array( (int) $id ) );
+	if ( ! $r ) {
+		nw_fail( 'Eintrag nicht gefunden.' );
+	}
+	return nw_time_row( $r );
+}
+
+function nw_time_save( array $d ) {
+	$id  = (int) ( $d['id'] ?? 0 );
+	$old = $id ? nw_time_get( $id ) : null;
+	$row = array(
+		'customer_id' => (int) ( $d['customer_id'] ?? 0 ),
+		'date'        => preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $d['date'] ?? '' ) ) ? $d['date'] : nw_today(),
+		'hours'       => nw_parse_hours( $d['hours'] ?? 0 ),
+		'project'     => mb_substr( trim( (string) ( $d['project'] ?? '' ) ), 0, 120 ),
+		'note'        => mb_substr( trim( (string) ( $d['note'] ?? '' ) ), 0, 4000 ),
+		'updated_at'  => nw_now(),
+	);
+	if ( ! $row['customer_id'] || ! q_val( 'SELECT 1 FROM customers WHERE id = ?', array( $row['customer_id'] ) ) ) {
+		nw_fail( 'Bitte einen Kunden wählen.' );
+	}
+	if ( $row['hours'] <= 0 || $row['hours'] > 24 ) {
+		nw_fail( 'Bitte eine Dauer zwischen 0 und 24 Stunden angeben (z. B. 1,5 oder 1:30).' );
+	}
+	if ( $old && $old['billed'] && ( $old['hours'] !== $row['hours'] || (int) $old['customer_id'] !== $row['customer_id'] ) ) {
+		nw_fail( 'Abgerechnete Stunden lassen sich nicht mehr ändern – nur die Notiz.' );
+	}
+	if ( $old ) {
+		nw_update( 'time_entries', $id, $row );
+	} else {
+		$row['created_at'] = nw_now();
+		$id                = nw_insert( 'time_entries', $row );
+	}
+	return nw_time_get( $id );
+}
+
+function nw_time_delete( $id ) {
+	$t = nw_time_get( $id );
+	if ( $t['billed'] && $t['invoice_id'] ) {
+		nw_fail( 'Dieser Eintrag ist mit einer ausgestellten Rechnung abgerechnet und bleibt erhalten.' );
+	}
+	q( 'DELETE FROM time_entries WHERE id = ?', array( (int) $id ) );
+}
+
+/** Von Hand als abgerechnet markieren (ohne Rechnung) oder wieder öffnen. */
+function nw_time_mark( array $ids, $billed ) {
+	$ids = array_values( array_filter( array_map( 'intval', $ids ) ) );
+	if ( ! $ids ) {
+		return 0;
+	}
+	$in = implode( ',', array_fill( 0, count( $ids ), '?' ) );
+	if ( $billed ) {
+		return q( "UPDATE time_entries SET billed = 1, billed_at = ? WHERE billed = 0 AND id IN ($in)", array_merge( array( nw_now() ), $ids ) )->rowCount();
+	}
+	// wieder öffnen – nicht wenn eine ausgestellte Rechnung dranhängt
+	return q( "UPDATE time_entries SET billed = 0, billed_at = NULL WHERE billed = 1 AND invoice_id IS NULL AND id IN ($in)", $ids )->rowCount();
+}
+
+/** Stunden einem Entwurf zuordnen (nur offene des Kunden); nicht mehr gewählte werden freigegeben. */
+function nw_time_link( $invoice_id, $customer_id, array $ids ) {
+	$ids = array_values( array_filter( array_map( 'intval', $ids ) ) );
+	q( 'UPDATE time_entries SET invoice_id = NULL WHERE invoice_id = ? AND billed = 0', array( (int) $invoice_id ) );
+	if ( $ids && $customer_id ) {
+		$in = implode( ',', array_fill( 0, count( $ids ), '?' ) );
+		q( "UPDATE time_entries SET invoice_id = ? WHERE billed = 0 AND (invoice_id IS NULL OR invoice_id = ?) AND customer_id = ? AND id IN ($in)", array_merge( array( (int) $invoice_id, (int) $invoice_id, (int) $customer_id ), $ids ) );
+	}
+}
+
+/** Übersicht: offen je Kunde, Woche/Monat, zuletzt genutzte Projekte. */
+function nw_time_summary() {
+	$open = q_all(
+		"SELECT t.customer_id, COALESCE(NULLIF(c.company,''), c.person) AS customer_name, ROUND(SUM(t.hours),2) AS hours, COUNT(*) AS entries, MIN(t.date) AS since
+		FROM time_entries t JOIN customers c ON c.id = t.customer_id WHERE t.billed = 0 GROUP BY t.customer_id ORDER BY hours DESC"
+	);
+	foreach ( $open as &$o ) {
+		$o['hours'] = (float) $o['hours'];
+		$o['rate']  = nw_hour_rate( $o['customer_id'] );
+		$o['value'] = round( $o['hours'] * $o['rate'], 2 );
+	}
+	unset( $o );
+	$monday = date( 'Y-m-d', strtotime( 'monday this week' ) );
+	return array(
+		'open'     => $open,
+		'open_h'   => round( array_sum( array_column( $open, 'hours' ) ), 2 ),
+		'open_val' => round( array_sum( array_column( $open, 'value' ) ), 2 ),
+		'week'     => (float) q_val( 'SELECT COALESCE(SUM(hours),0) FROM time_entries WHERE date >= ?', array( $monday ) ),
+		'month'    => (float) q_val( 'SELECT COALESCE(SUM(hours),0) FROM time_entries WHERE date >= ?', array( date( 'Y-m-01' ) ) ),
+		'projects' => array_column( q_all( "SELECT project, MAX(date) AS d FROM time_entries WHERE project != '' GROUP BY project ORDER BY d DESC LIMIT 30" ), 'project' ),
+		'rate'     => (float) str_replace( ',', '.', nw_setting( 'hour_rate' ) ?: '0' ),
+	);
 }
 
 /* ==================================================================== Dauerrechnungen */
@@ -1033,5 +1226,6 @@ function nw_dashboard() {
 			ORDER BY a.id DESC LIMIT 12"
 		),
 		'cron_last'     => nw_setting( 'cron_last' ),
+		'hours'         => nw_time_summary(),
 	);
 }

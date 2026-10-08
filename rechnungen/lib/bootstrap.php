@@ -181,6 +181,31 @@ function nw_migrate( PDO $pdo ) {
 			PRAGMA user_version = 4;"
 		);
 	}
+	if ( $v < 5 ) {
+		// E-Mail-Protokoll ausführlich, Stundenerfassung, Stundensatz je Kunde
+		$pdo->exec(
+			"ALTER TABLE mail_log ADD COLUMN number TEXT;
+			ALTER TABLE mail_log ADD COLUMN from_addr TEXT;
+			ALTER TABLE mail_log ADD COLUMN cc TEXT;
+			ALTER TABLE mail_log ADD COLUMN bcc TEXT;
+			ALTER TABLE mail_log ADD COLUMN reply_to TEXT;
+			ALTER TABLE mail_log ADD COLUMN attachment TEXT;
+			ALTER TABLE mail_log ADD COLUMN bytes INTEGER;
+			ALTER TABLE mail_log ADD COLUMN message_id TEXT;
+			ALTER TABLE mail_log ADD COLUMN server_reply TEXT;
+			ALTER TABLE mail_log ADD COLUMN smtp_host TEXT;
+			ALTER TABLE mail_log ADD COLUMN source TEXT;
+			CREATE INDEX IF NOT EXISTS mail_created ON mail_log(created_at);
+			CREATE TABLE time_entries (
+				id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers(id), date TEXT, hours REAL,
+				project TEXT DEFAULT '', note TEXT DEFAULT '', billed INTEGER DEFAULT 0, invoice_id INTEGER,
+				billed_at TEXT, created_at TEXT, updated_at TEXT);
+			CREATE INDEX time_customer ON time_entries(customer_id, billed);
+			CREATE INDEX time_invoice ON time_entries(invoice_id);
+			ALTER TABLE customers ADD COLUMN hour_rate REAL;
+			PRAGMA user_version = 5;"
+		);
+	}
 }
 
 /* ==================================================================== Einstellungen */
@@ -224,6 +249,8 @@ function nw_settings_defaults() {
 		'accent'             => '#16171a',
 		'ui_theme'           => 'schlicht',
 		'ui_accent_pdf'      => '0',
+		'hour_rate'          => '',
+		'hour_name'          => 'Arbeitsstunden',
 		'dash_layout'        => '',
 		'smtp_host'          => '',
 		'smtp_port'          => '465',

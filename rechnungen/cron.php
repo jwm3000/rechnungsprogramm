@@ -7,6 +7,7 @@
  * oder per URL (Schlüssel siehe Einstellungen → E-Mail & Automatik):
  *   https://deine-domain.at/rechnungen/cron.php?key=…
  */
+define( 'NW_CRON', true ); // E-Mail-Protokoll: „automatisch“
 require __DIR__ . '/lib/bootstrap.php';
 
 $cli = 'cli' === PHP_SAPI;

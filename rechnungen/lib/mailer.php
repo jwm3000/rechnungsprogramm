@@ -13,18 +13,24 @@ class NW_SMTP {
 	/**
 	 * @param array $m from, from_name, to[], cc[], bcc[], reply_to, subject, text, html, attachments[{name, type, data}]
 	 */
+	/**
+	 * @return array{message_id:string, bytes:int, reply:string} Message-ID, Größe und Antwort des Servers („250 queued as …“)
+	 */
 	public static function send( array $cfg, array $m ) {
-		$smtp = new self();
+		$domain           = substr( strrchr( (string) $m['from'], '@' ), 1 ) ?: 'localhost';
+		$m['message_id']  = $m['message_id'] ?? bin2hex( random_bytes( 12 ) ) . '@' . $domain;
+		$data             = self::build( $m );
+		$smtp             = new self();
 		try {
 			$smtp->connect( $cfg );
-			$smtp->transmit( $cfg, $m );
+			$reply = $smtp->transmit( $cfg, $m, $data );
 			$smtp->cmd( 'QUIT', array( 221 ) );
 		} finally {
 			if ( $smtp->sock ) {
 				@fclose( $smtp->sock );
 			}
 		}
-		return true;
+		return array( 'message_id' => $m['message_id'], 'bytes' => strlen( $data ), 'reply' => trim( (string) $reply ) );
 	}
 
 	private function connect( array $c ) {
@@ -72,17 +78,16 @@ class NW_SMTP {
 		}
 	}
 
-	private function transmit( array $c, array $m ) {
+	private function transmit( array $c, array $m, $data ) {
 		$from = $m['from'];
 		$this->cmd( 'MAIL FROM:<' . $from . '>', array( 250 ) );
 		foreach ( array_unique( array_merge( $m['to'], $m['cc'] ?? array(), $m['bcc'] ?? array() ) ) as $rcpt ) {
 			$this->cmd( 'RCPT TO:<' . $rcpt . '>', array( 250, 251 ) );
 		}
 		$this->cmd( 'DATA', array( 354 ) );
-		$data = self::build( $m );
 		$data = preg_replace( '/^\./m', '..', $data ); // Dot-Stuffing
 		fwrite( $this->sock, $data . "\r\n.\r\n" );
-		$this->expect( array( 250 ) );
+		return $this->expect( array( 250 ) );
 	}
 
 	public static function header_encode( $s ) {
@@ -109,7 +114,7 @@ class NW_SMTP {
 			$h[] = 'Reply-To: ' . $m['reply_to'];
 		}
 		$h[] = 'Subject: ' . self::header_encode( $m['subject'] );
-		$h[] = 'Message-ID: <' . bin2hex( random_bytes( 12 ) ) . '@' . $domain . '>';
+		$h[] = 'Message-ID: <' . ( $m['message_id'] ?? bin2hex( random_bytes( 12 ) ) . '@' . $domain ) . '>';
 		$h[] = 'MIME-Version: 1.0';
 		$h[] = 'Content-Type: multipart/mixed; boundary="' . $mixed . '"';
 
@@ -219,6 +224,74 @@ function nw_reply_to( array $cfg, $from ) {
 	return nw_is_email( $e ) && strtolower( $e ) !== strtolower( (string) $from ) ? $e : '';
 }
 
+/* ==================================================================== Versand mit Protokoll */
+
+/**
+ * Jede Mail geht hier durch: senden und vollständig protokollieren (auch Fehlschläge).
+ *
+ * @param array $m    Nachricht für NW_SMTP::send
+ * @param array $meta kind (invoice|reminder|offer|test), invoice_id, number
+ * @return array{ok:bool, error:string, message_id:string}
+ */
+function nw_mail_send( array $cfg, array $m, array $meta ) {
+	$error = '';
+	$res   = array( 'message_id' => '', 'bytes' => 0, 'reply' => '' );
+	try {
+		if ( '' === trim( (string) $cfg['host'] ) ) {
+			throw new RuntimeException( 'E-Mail-Versand ist noch nicht eingerichtet (Einstellungen → E-Mail).' );
+		}
+		$res = NW_SMTP::send( $cfg, $m );
+	} catch ( Throwable $e ) {
+		$error = $e->getMessage();
+	}
+	$att = array_map( function ( $a ) { return $a['name'] . ' (' . round( strlen( $a['data'] ) / 1024 ) . ' KB)'; }, $m['attachments'] ?? array() );
+	nw_insert(
+		'mail_log',
+		array(
+			'invoice_id'   => $meta['invoice_id'] ?? null,
+			'number'       => $meta['number'] ?? null,
+			'kind'         => $meta['kind'] ?? 'invoice',
+			'to_addr'      => implode( ', ', $m['to'] ),
+			'cc'           => implode( ', ', $m['cc'] ?? array() ),
+			'bcc'          => implode( ', ', $m['bcc'] ?? array() ),
+			'from_addr'    => '' !== trim( (string) ( $m['from_name'] ?? '' ) ) ? $m['from_name'] . ' <' . $m['from'] . '>' : $m['from'],
+			'reply_to'     => (string) ( $m['reply_to'] ?? '' ),
+			'subject'      => (string) $m['subject'],
+			'attachment'   => implode( ', ', $att ),
+			'bytes'        => (int) $res['bytes'],
+			'message_id'   => (string) $res['message_id'],
+			'server_reply' => mb_substr( (string) $res['reply'], 0, 300 ),
+			'smtp_host'    => trim( (string) $cfg['host'] ) . ( $cfg['host'] ? ':' . (int) $cfg['port'] : '' ),
+			'source'       => defined( 'NW_CRON' ) ? 'automatisch' : 'von Hand',
+			'ok'           => '' === $error ? 1 : 0,
+			'error'        => $error,
+			'created_at'   => nw_now(),
+		)
+	);
+	return array( 'ok' => '' === $error, 'error' => $error, 'message_id' => (string) $res['message_id'] );
+}
+
+/** Protokoll lesen (neueste zuerst). */
+function nw_mail_log( array $f = array() ) {
+	$where = array( '1=1' );
+	$args  = array();
+	if ( ! empty( $f['errors'] ) ) {
+		$where[] = 'ok = 0';
+	}
+	if ( '' !== trim( (string) ( $f['q'] ?? '' ) ) ) {
+		$where[] = '(to_addr LIKE ? OR cc LIKE ? OR subject LIKE ? OR number LIKE ?)';
+		$like    = '%' . trim( $f['q'] ) . '%';
+		array_push( $args, $like, $like, $like, $like );
+	}
+	$limit = max( 1, min( 500, (int) ( $f['limit'] ?? 100 ) ) );
+	$rows  = q_all( 'SELECT * FROM mail_log WHERE ' . implode( ' AND ', $where ) . ' ORDER BY id DESC LIMIT ' . ( $limit + 1 ) . ' OFFSET ' . max( 0, (int) ( $f['offset'] ?? 0 ) ), $args );
+	return array(
+		'rows'  => array_slice( $rows, 0, $limit ),
+		'more'  => count( $rows ) > $limit,
+		'stats' => q_row( "SELECT COUNT(*) AS total, SUM(ok = 0) AS failed, MAX(created_at) AS last FROM mail_log" ),
+	);
+}
+
 /* ==================================================================== Rechnungsmails */
 
 function nw_mail_configured() {
@@ -293,31 +366,24 @@ function nw_mail_invoice( $id, $type = 'invoice', array $o = array() ) {
 	$subject = trim( (string) ( $o['subject'] ?? '' ) ) ?: $mail['subject'];
 	$body    = trim( (string) ( $o['body'] ?? '' ) ) ?: $mail['body'];
 	$from    = $cfg['from'] ?: $cfg['user'];
-	$error   = '';
-	try {
-		if ( ! nw_mail_configured() ) {
-			throw new RuntimeException( 'E-Mail-Versand ist noch nicht eingerichtet (SMTP in config.php).' );
-		}
-		NW_SMTP::send(
-			$cfg,
-			array(
-				'from'        => $from,
-				'from_name'   => $cfg['from_name'] ?: nw_setting( 'company' ),
-				'reply_to'    => nw_reply_to( $cfg, $from ),
-				'to'          => $to,
-				'cc'          => $cc,
-				'bcc'         => nw_emails( $cfg['bcc'] ),
-				'subject'     => $subject,
-				'text'        => $body,
-				'html'        => nw_mail_html( $body, $inv ),
-				'attachments' => array( array( 'name' => NW_Document::filename( $inv ), 'type' => 'application/pdf', 'data' => NW_Document::render( $inv ) ) ),
-			)
-		);
-	} catch ( Throwable $e ) {
-		$error = $e->getMessage();
-	}
-	$ok = '' === $error;
-	nw_insert( 'mail_log', array( 'invoice_id' => $inv['id'], 'kind' => $type, 'to_addr' => implode( ', ', array_merge( $to, $cc ) ), 'subject' => $subject, 'ok' => $ok ? 1 : 0, 'error' => $error, 'created_at' => nw_now() ) );
+	$res     = nw_mail_send(
+		$cfg,
+		array(
+			'from'        => $from,
+			'from_name'   => $cfg['from_name'] ?: nw_setting( 'company' ),
+			'reply_to'    => nw_reply_to( $cfg, $from ),
+			'to'          => $to,
+			'cc'          => $cc,
+			'bcc'         => nw_emails( $cfg['bcc'] ),
+			'subject'     => $subject,
+			'text'        => $body,
+			'html'        => nw_mail_html( $body, $inv ),
+			'attachments' => array( array( 'name' => NW_Document::filename( $inv ), 'type' => 'application/pdf', 'data' => NW_Document::render( $inv ) ) ),
+		),
+		array( 'invoice_id' => $inv['id'], 'number' => $inv['number'], 'kind' => 'offer' === $inv['kind'] ? 'offer' : $type )
+	);
+	$ok    = $res['ok'];
+	$error = $res['error'];
 	if ( $ok ) {
 		if ( 'reminder' === $type ) {
 			nw_update( 'invoices', $inv['id'], array( 'reminder_level' => (int) $inv['reminder_level'] + 1, 'reminded_at' => nw_now() ) );

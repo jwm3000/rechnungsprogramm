@@ -71,6 +71,8 @@ echo "· Ohne Anmeldung"
 check "$(code "$BASE/api.php?a=bootstrap")" 401 "Daten ohne Anmeldung gesperrt"
 check "$(code "$BASE/api.php?a=backup")" 401 "Sicherung ohne Anmeldung gesperrt"
 check "$(code "$BASE/api.php?a=pdf&id=$IID")" 401 "PDF ohne Anmeldung gesperrt"
+check "$(code "$BASE/api.php?a=mail_log")" 401 "E-Mail-Protokoll ohne Anmeldung gesperrt"
+check "$(code "$BASE/api.php?a=hours")" 401 "Stunden ohne Anmeldung gesperrt"
 
 echo "· Schutz gegen Passwort-Raten"
 J2="$(mktemp)"

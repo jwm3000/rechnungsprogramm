@@ -152,6 +152,24 @@ foreach (
 	nw_recurring_save( array( 'customer_id' => $c[ $r[0] ]['id'], 'title' => $r[1], 'next_date' => $r[2], 'mode' => $r[3], 'items' => $r[4], 'interval_months' => $r[5], 'active' => 1 ) );
 }
 
+// Stunden (Schankdienst, Lieferungen, Beratung)
+nw_set_setting( 'hour_rate', '38' );
+nw_set_setting( 'hour_name', 'Schankdienst & Service' );
+foreach (
+	array(
+		array( 'golf', '2026-09-29', 4.5, 'Saisonabschluss', 'Ausschank Clubhaus-Terrasse, Fässer gewechselt' ),
+		array( 'golf', '2026-10-02', 2, 'Saisonabschluss', 'Weinverkostung vorbereitet, Gläser poliert' ),
+		array( 'golf', '2026-10-05', 1.25, 'Weihnachtsfeier', 'Vorbesprechung mit Dr. Lochner, Menge kalkuliert' ),
+		array( 'ffw', '2026-10-03', 6, 'Feuerwehrfest', 'Zapfanlage aufgebaut und betreut' ),
+		array( 'ffw', '2026-10-04', 3.5, 'Feuerwehrfest', 'Abbau, Leergut sortiert' ),
+		array( 'musik', '2026-10-06', 1.5, 'Herbstkonzert', 'Lagerplatz besichtigt, Kühlung geplant' ),
+	) as $h
+) {
+	nw_time_save( array( 'customer_id' => $c[ $h[0] ]['id'], 'date' => $h[1], 'hours' => $h[2], 'project' => $h[3], 'note' => $h[4] ) );
+}
+$billedT = nw_time_save( array( 'customer_id' => $c['hirsch']['id'], 'date' => '2026-09-12', 'hours' => 2, 'project' => 'Stammtisch', 'note' => 'Geburtstagsrunde betreut' ) );
+nw_time_mark( array( $billedT['id'] ), true );
+
 // Ausgaben
 foreach (
 	array(

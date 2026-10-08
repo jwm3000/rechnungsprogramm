@@ -5,7 +5,7 @@
 <h1 align="center">Rechnungsprogramm</h1>
 
 <p align="center">
-  Rechnungen, Angebote und Dauerrechnungen für Selbstständige und kleine Firmen in Österreich.<br>
+  Rechnungen, Angebote, Dauerrechnungen und Stunden für Selbstständige und kleine Firmen in Österreich.<br>
   <b>PHP + SQLite · keine Abhängigkeiten · kein Build-Schritt</b> – läuft auf jedem Webhosting<br>
   und fühlt sich an wie eine moderne App, am Desktop wie am Handy.
 </p>
@@ -29,11 +29,14 @@
 </tr>
 <tr>
 <td><img src="docs/dauerrechnungen.png" alt="Dauerrechnungen mit Jahresleiste"></td>
-<td><img src="docs/editor.png" alt="Rechnung bearbeiten mit Live-Vorschau"></td>
+<td><img src="docs/editor.png" alt="Offene Stunden mit einem Klick in die Rechnung übernehmen"></td>
 </tr>
 <tr>
-<td><img src="docs/kunde.png" alt="Kundenseite"></td>
-<td><img src="docs/dunkel.png" alt="Dunkles Design"></td>
+<td><img src="docs/kunde.png" alt="Kundenseite mit Stunden"></td>
+<td><img src="docs/stunden.png" alt="Stunden erfassen und abrechnen"></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/dunkel.png" alt="Dunkles Design"></td>
 </tr>
 </table>
 
@@ -48,6 +51,7 @@ Das PDF entsteht direkt in PHP, ohne Bibliothek:
 
 - eigenes **Logo** als SVG (Vektor), PNG (auch transparent) oder JPG
 - Zahlschein mit **SEPA-QR-Code** – Banking-App öffnen, scannen, fertig
+- Spalte „Einheit“ nur, wenn eine Position eine Einheit hat
 - USt.-Ausweis je Steuersatz oder Kleinunternehmer-Hinweis
 - Teilzahlungen („bereits bezahlt / offen“) und Stempel „Bezahlt“, „Storniert“, „Angenommen“, „Abgelehnt“
 - **Automatisches Schrumpfen**: Würde nur die Summe, der Stempel oder der Zahlschein allein auf einer neuen Seite landen, rücken die Positionszeilen zusammen
@@ -61,6 +65,7 @@ Das PDF entsteht direkt in PHP, ohne Bibliothek:
 - **Zahlungseingang abhaken** direkt in der Liste – mit „Rückgängig“
 - **Teilzahlungen**: weniger als offen → „teilweise bezahlt“, mehrere Zahlungen je Rechnung
 - Per E-Mail senden (PDF im Anhang), Zahlungserinnerung, Teilen am Handy, Kopieren
+- **Löschen**: War es die zuletzt vergebene Nummer, wird sie wieder frei – sonst wird weitergezählt
 
 **Angebote**
 - Gleicher Editor, eigener Nummernkreis (`A-1001` …), „gültig bis“
@@ -72,7 +77,15 @@ Das PDF entsteht direkt in PHP, ohne Bibliothek:
 - monatlich bis alle 3 Jahre; Platzhalter `{MONAT}`, `{JAHR}`, `{ZEITRAUM}` in Positionstexten
 - pro Kunde: **automatisch senden**, nur ausstellen oder Entwurf zur Prüfung
 - täglicher Cronjob erstellt und versendet fällige Rechnungen
+- **E-Mail-Protokoll** in den Einstellungen: jede Mail mit Zeit, Absender, Empfängern (auch CC/BCC), Betreff, Beleg, Anhang, Antwort des Servers oder Fehler
 - wiederkehrende Rechnungen sind in allen Listen mit einem Symbol gekennzeichnet
+
+**Stunden**
+- Zeit für Kunden und Projekte mitschreiben: Dauer als `1,5`, `1:30` oder `90m`, Schnellknöpfe und **Stoppuhr**
+- Notizfeld „Was wurde gemacht?“ – erscheint auf Wunsch als Beschreibung auf der Rechnung
+- Eigene Seite mit Filtern, Wochen- und Monatssumme und **offenen Stunden je Kunde**; auch auf der Kundenseite und als Widget in der Übersicht
+- Im Rechnungs-Editor einblendbar, sobald der Kunde offene Stunden hat: Einträge wählen, Stundensatz (Standard oder je Kunde) – fertig ist die Position
+- Beim Ausstellen gelten die Stunden als **abgerechnet**; auch von Hand markierbar, Export als CSV
 
 **Kunden & Artikel**
 - Kundenstamm mit Umsatz, offenen Beträgen, Angeboten, Verlauf, eigener Zahlungsfrist

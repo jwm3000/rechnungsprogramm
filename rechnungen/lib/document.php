@@ -194,8 +194,9 @@ class NW_Document {
 		$last = count( $inv['items'] ) - 1;
 		$pt   = 14 * $k;
 		$y   += 12 * $k;
-		$cols = self::columns();
-		$y    = self::table_head( $pdf, $y, $cols );
+		$cols  = self::columns();
+		$units = (bool) array_filter( array_column( $inv['items'], 'unit' ), function ( $u ) { return '' !== trim( (string) $u ); } ); // Spalte „Einheit“ nur wenn gebraucht
+		$y    = self::table_head( $pdf, $y, $cols, $units );
 		foreach ( array_values( $inv['items'] ) as $idx => $it ) {
 			$reserve = $idx === $last ? $tail : 0;
 			$desc    = array();
@@ -220,7 +221,7 @@ class NW_Document {
 				$pdf->add_page();
 				self::page_frame( $pdf, $s, $accent );
 				$pdf->text( $L, 60, $head . ' – Fortsetzung', 9, true, self::$muted );
-				$y = self::table_head( $pdf, 74, $cols );
+				$y = self::table_head( $pdf, 74, $cols, $units );
 			}
 			$ry = $y + $pt + 3 * $k;
 			$pdf->text( $cols['pos'], $ry, (string) $it['pos'], 9.5, false, self::$muted );
@@ -450,14 +451,16 @@ class NW_Document {
 		);
 	}
 
-	private static function table_head( NW_PDF $pdf, $y, array $c ) {
+	private static function table_head( NW_PDF $pdf, $y, array $c, $units = true ) {
 		$pdf->rrect( self::L, $y, self::R - self::L, 24, 4, self::$soft );
 		$ty = $y + 15.5;
 		$pdf->text( $c['pos'], $ty, 'Pos.', 8, true, self::$muted );
 		$pdf->text( $c['sku'], $ty, 'Art.Nr.', 8, true, self::$muted );
 		$pdf->text( $c['name'], $ty, 'Leistung', 8, true, self::$muted );
 		$pdf->text( $c['qty'], $ty, 'Menge', 8, true, self::$muted, 'right' );
-		$pdf->text( $c['unit'], $ty, 'Einheit', 8, true, self::$muted );
+		if ( $units ) {
+			$pdf->text( $c['unit'], $ty, 'Einheit', 8, true, self::$muted );
+		}
 		$pdf->text( $c['price'], $ty, 'Einzelpreis', 8, true, self::$muted, 'right' );
 		$pdf->text( $c['sum'], $ty, 'Gesamt', 8, true, self::$muted, 'right' );
 		return $y + 24;

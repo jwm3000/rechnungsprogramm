@@ -275,6 +275,7 @@
 		['#/', 'home', 'Übersicht'],
 		['#/rechnungen', 'file', 'Rechnungen'],
 		['#/angebote', 'offer', 'Angebote'],
+		['#/stunden', 'clock', 'Stunden'],
 		['#/kunden', 'users', 'Kunden'],
 		['#/dauerrechnungen', 'repeat', 'Dauerrechnungen'],
 		['#/artikel', 'box', 'Artikel'],
@@ -311,9 +312,9 @@
 		const soft = t.id === 'schlicht' ? '#eaecef' : `color-mix(in srgb, ${t.color} 12%, #fff)`;
 		const r = t.modern ? '9px' : '3px';
 		const bg = t.modern ? '#f3f3f9' : '#eef0f3';
-		return `<div class="mini" style="background:${bg};border-radius:${t.modern ? '10px' : '6px'}">
-			<div class="mini-side"><b></b><span class="on" style="background:${soft};border-left:2px solid ${t.color}"></span><span></span><span></span><span></span></div>
-			<div class="mini-main"><div class="mh"><b></b><em style="background:${t.modern ? `linear-gradient(135deg, ${t.color}, color-mix(in srgb, ${t.color} 60%, #c026d3))` : t.color};border-radius:${r}"></em></div>
+		return `<div class="tmini" style="background:${bg};border-radius:${t.modern ? '10px' : '6px'}">
+			<div class="tmini-side"><b></b><span class="on" style="background:${soft};border-left:2px solid ${t.color}"></span><span></span><span></span><span></span></div>
+			<div class="tmini-main"><div class="mh"><b></b><em style="background:${t.modern ? `linear-gradient(135deg, ${t.color}, color-mix(in srgb, ${t.color} 60%, #c026d3))` : t.color};border-radius:${r}"></em></div>
 				<div class="mc" style="border-radius:${r};${t.modern ? 'box-shadow:0 3px 10px rgba(30,27,75,.08)' : 'border:1px solid #d9dce1'}"><i style="height:40%;background:#b5bac3"></i><i style="height:75%;background:${t.color}"></i><i style="height:55%;background:#b5bac3"></i><i style="height:95%;background:${t.color}"></i><i style="height:30%;background:#b5bac3"></i><i style="height:65%;background:${t.color}"></i></div>
 				<div class="mb"><s style="background:${soft}"></s><s style="background:#e6f4ec"></s><s style="background:${soft}"></s></div></div>
 		</div>`;
@@ -422,6 +423,7 @@
 		[/^#\/rechnungen$/, viewInvoices],
 		[/^#\/rechnung\/neu$/, (q) => viewInvoice(null, q)],
 		[/^#\/angebote$/, viewOffers],
+		[/^#\/stunden$/, viewHours],
 		[/^#\/angebot\/neu$/, (q) => viewInvoice(null, q, 'offer')],
 		[/^#\/angebot\/(\d+)$/, (q, m) => viewInvoice(+m[1], q)],
 		[/^#\/rechnung\/(\d+)$/, (q, m) => viewInvoice(+m[1], q)],
@@ -447,7 +449,7 @@
 		lastHash = location.hash;
 		$$('[data-nav]').forEach((a) => {
 			const h = a.dataset.nav;
-			a.classList.toggle('on', h === '#/' ? path === '#/' || path === '' : path.startsWith(h) || (h === '#/rechnungen' && path.startsWith('#/rechnung/')) || (h === '#/angebote' && path.startsWith('#/angebot/')) || (h === '#/kunden' && path.startsWith('#/kunde/')) || (h === '#/mehr' && ['#/angebot', '#/artikel', '#/dauerrechnungen', '#/ausgaben', '#/einstellungen'].some((p) => path.startsWith(p))));
+			a.classList.toggle('on', h === '#/' ? path === '#/' || path === '' : path.startsWith(h) || (h === '#/rechnungen' && path.startsWith('#/rechnung/')) || (h === '#/angebote' && path.startsWith('#/angebot/')) || (h === '#/kunden' && path.startsWith('#/kunde/')) || (h === '#/mehr' && ['#/angebot', '#/stunden', '#/artikel', '#/dauerrechnungen', '#/ausgaben', '#/einstellungen'].some((p) => path.startsWith(p))));
 		});
 		const main = $('#main');
 		for (const [re, fn] of routes) {
@@ -474,7 +476,7 @@
 
 	/* ---------------------------------------------------------------- Übersicht: Widgets (verschieben, minimieren) */
 
-	const DASH_DEFAULT = { top: ['kpis'], main: ['chart', 'open'], side: ['limit', 'recurring', 'offers', 'drafts', 'years', 'top', 'activity'], min: [] };
+	const DASH_DEFAULT = { top: ['kpis'], main: ['chart', 'open'], side: ['hours', 'limit', 'recurring', 'offers', 'drafts', 'years', 'top', 'activity'], min: [] };
 	const dashLayout = () => {
 		let l = null;
 		try { l = JSON.parse(S.settings.dash_layout || 'null'); } catch (e) { l = null; }
@@ -546,6 +548,19 @@
 				body: () => `<div class="card-body" style="padding-top:8px"><div class="meter ${limitPct > 90 ? 'bad' : limitPct > 75 ? 'warn' : ''}" style="margin-top:0"><i style="width:${limitPct}%"></i></div>
 					<div class="muted" style="font-size:12.5px;margin-top:8px">${money(d.revenue)} von ${money(d.limit)} · noch ${money(Math.max(0, d.limit - d.revenue))} Spielraum</div></div>`,
 			} : null,
+			hours: {
+				title: 'Stunden',
+				sum: `${fmtH(d.hours.open_h)} offen · diese Woche ${fmtH(d.hours.week)}`,
+				head: `<a class="btn sm ghost" href="#/stunden">Alle ${icon('right')}</a>`,
+				body: () => `<div class="card-body" style="padding-top:8px">
+					<div class="hours-mini"><span><b class="num">${fmtH(d.hours.week)}</b> diese Woche</span><span><b class="num">${fmtH(d.hours.month)}</b> diesen Monat</span><span><b class="num">${fmtH(d.hours.open_h)}</b> offen${d.hours.open_val ? ' · ' + money(d.hours.open_val) : ''}</span></div>
+					<details class="hours-add"><summary>${icon('plus')} Stunden erfassen</summary><div id="dhform" style="margin-top:12px"></div></details>
+					${d.hours.open.length ? `<div class="list" style="margin-top:6px">${d.hours.open.slice(0, 4).map((o) => `
+						<div class="list-item"><div class="li-main"><div class="li-title">${esc(o.customer_name)}</div><div class="li-sub">${fmtH(o.hours)} offen${o.rate ? ' · ' + money(o.value) : ''}</div></div>
+						<a class="btn sm" href="#/rechnung/neu?kunde=${o.customer_id}&stunden=1">${icon('file')} Abrechnen</a></div>`).join('')}</div>` : ''}
+				</div>`,
+				after: () => hourForm($('#dhform'), { compact: true, projects: d.hours.projects, id: 'w', onSaved: () => viewDashboard() }),
+			},
 			recurring: {
 				title: 'Nächste Dauerrechnungen',
 				sum: d.recurring_upcoming.length ? `${d.recurring_upcoming.length} in 60 Tagen · nächste ${date(d.recurring_upcoming[0].next_date)}` : 'keine in den nächsten 60 Tagen',
@@ -896,7 +911,7 @@
 				id: 0, customer_id: c ? +c.id : null, recipient: c ? { name: c.name, number: c.number, lines: c.lines || [], email: c.email } : { name: '', number: '', lines: [], email: '' },
 				invoice_date: S.today, payment_days: c && c.payment_days !== null && c.payment_days !== '' ? +c.payment_days : +S.settings.payment_days,
 				service_date: S.today, period_from: null, period_to: null, subject: '', greeting: '', intro: offer ? S.settings.offer_intro : S.settings.intro, outro: offer ? S.settings.offer_outro : S.settings.outro, note: '',
-				items: [{ sku: '', name: '', description: '', qty: 1, unit: '', price: 0, discount: 0 }], status: 'draft', _new: true, _fromCustomer: !!c,
+				items: [{ sku: '', name: '', description: '', qty: 1, unit: '', price: 0, discount: 0 }], status: 'draft', _new: true, _fromCustomer: !!c, _hours: offer ? '' : (q.stunden || ''),
 			});
 		}
 		const inv = await api('invoice', undefined, { query: { id } });
@@ -962,6 +977,7 @@
 							<button class="btn" data-dup>${icon('copy')} Als neue Rechnung kopieren</button>
 							${isInv && inv.status === 'issued' ? `<button class="btn danger" data-cancel>${icon('ban')} Stornieren</button>` : ''}
 							${!inv.sent_at && isInv ? `<button class="btn ghost" data-marksent>${icon('check')} Als versendet markieren</button>` : ''}
+							<button class="btn ghost danger" data-delete>${icon('trash')} ${inv.kind === 'storno' ? 'Stornorechnung' : 'Rechnung'} löschen</button>
 						</div>
 						<p class="muted" style="font-size:12.5px;margin-top:12px">Ausgestellte Rechnungen lassen sich nicht mehr ändern. Zum Korrigieren stornieren und eine Kopie neu ausstellen.</p>
 					</div>
@@ -1012,6 +1028,7 @@
 			if (ok) try { const st = await api('invoice_cancel', { id: inv.id }); await refresh(); go('#/rechnung/' + st.id); toast('Stornorechnung ' + st.number + ' ausgestellt'); } catch (e) { fail(e); }
 		});
 		$('[data-marksent]', main)?.addEventListener('click', async () => { try { await reload(await api('invoice_mark_sent', { id: inv.id })); } catch (e) { fail(e); } });
+		$('[data-delete]', main).onclick = () => deleteDoc(inv);
 		$('[data-mail]', main)?.addEventListener('click', () => mailDialog(inv, 'invoice', reload));
 		$('[data-remind]', main)?.addEventListener('click', () => mailDialog(inv, 'reminder', reload));
 		$('[data-share]', main).onclick = () => sharePdf(pdfUrl, title, inv);
@@ -1120,6 +1137,7 @@
 		const main = $('#main');
 		const ed = JSON.parse(JSON.stringify(inv));
 		ed.kind = ed.kind === 'offer' ? 'offer' : 'invoice';
+		if (ed.time_ids?.length) { const hn = S.settings.hour_name || 'Arbeitsstunden'; const it = (ed.items || []).find((x) => x.name === hn); if (it) it._hours = true; }
 		const isOffer = ed.kind === 'offer';
 		const docPath = isOffer ? '#/angebot/' : '#/rechnung/';
 		ed.items = ed.items.length ? ed.items : [blankItem()];
@@ -1153,6 +1171,7 @@
 					</div>
 
 					<div class="card card-pad">
+						${isOffer ? '' : '<div id="hourpanel"></div>'}
 						<div class="section-title" style="margin-top:0">Positionen</div>
 						<div id="items"></div>
 						<div class="totals" id="totals"></div>
@@ -1225,8 +1244,78 @@
 			}
 			$('#totals').innerHTML = html;
 		};
-		itemsEditor($('#items'), ed.items, touch);
+		const itemsCtl = itemsEditor($('#items'), ed.items, touch);
 		drawTotals();
+
+		/* Offene Stunden des Kunden: Leiste nur wenn vorhanden, ein-/ausblendbar, als Position übernehmen */
+		ed.time_ids = ed.time_ids || [];
+		let hp = { entries: [], rate: 0, open: false, pick: new Set(ed.time_ids), withNotes: true };
+		const hourItemIdx = () => ed.items.findIndex((it) => it._hours);
+		const drawHours = () => {
+			const box = $('#hourpanel');
+			if (!box) return;
+			if (!hp.entries.length) { box.innerHTML = ''; return; }
+			const total = hp.entries.reduce((a, t) => a + t.hours, 0);
+			const picked = hp.entries.filter((t) => hp.pick.has(t.id));
+			const ph = picked.reduce((a, t) => a + t.hours, 0);
+			const taken = ed.time_ids.length > 0;
+			box.innerHTML = `<div class="hourpanel ${hp.open ? 'open' : ''}">
+				<button type="button" class="hp-head" aria-expanded="${hp.open}" data-hp-toggle>
+					${icon('clock')}<span class="grow"><b>${fmtH(total)} offene Stunden</b> für diesen Kunden${taken ? ` · <span class="hp-taken">${fmtH(ed.time_ids.reduce((a, id) => a + (hp.entries.find((t) => t.id === id)?.hours || 0), 0))} übernommen</span>` : ''}</span>
+					<span class="muted">${hp.open ? 'Ausblenden' : 'Einblenden'}</span>${icon(hp.open ? 'up' : 'down')}
+				</button>
+				${hp.open ? `<div class="hp-body">
+					<div class="hp-list">${hp.entries.map((t) => `<label class="hp-row"><input type="checkbox" data-hp="${t.id}" ${hp.pick.has(t.id) ? 'checked' : ''}>
+						<span class="mono muted">${date(t.date)}</span><span class="grow">${t.project ? `<b>${esc(t.project)}</b> · ` : ''}${esc(t.note) || '<span class="faint">ohne Notiz</span>'}</span><b class="num">${fmtH(t.hours)}</b></label>`).join('')}</div>
+					<div class="hp-foot">
+						<label class="field" style="width:140px"><span>Stundensatz €</span><input type="text" inputmode="decimal" id="hp-rate" value="${dec(hp.rate)}"></label>
+						<label class="switch" style="font-size:13px"><input type="checkbox" id="hp-notes" ${hp.withNotes ? 'checked' : ''}> Notizen als Beschreibung</label>
+						<span class="grow"></span>
+						<span class="muted num">${fmtH(ph)} × ${money(num($('#hp-rate')?.value ?? hp.rate))}</span>
+						${taken ? `<button type="button" class="btn sm ghost" data-hp-remove>Entfernen</button>` : ''}
+						<button type="button" class="btn sm primary" data-hp-take ${picked.length ? '' : 'disabled'}>${icon('plus')} ${taken ? 'Position aktualisieren' : 'Als Position übernehmen'}</button>
+					</div></div>` : ''}
+			</div>`;
+			$('[data-hp-toggle]', box).onclick = () => { hp.open = !hp.open; drawHours(); };
+			$$('[data-hp]', box).forEach((c) => (c.onchange = () => { c.checked ? hp.pick.add(+c.dataset.hp) : hp.pick.delete(+c.dataset.hp); drawHours(); }));
+			$('#hp-rate', box)?.addEventListener('change', (e) => { hp.rate = num(e.target.value); drawHours(); });
+			$('#hp-notes', box)?.addEventListener('change', (e) => { hp.withNotes = e.target.checked; });
+			$('[data-hp-take]', box)?.addEventListener('click', () => takeHours());
+			$('[data-hp-remove]', box)?.addEventListener('click', () => {
+				const i = hourItemIdx(); if (i >= 0) ed.items.splice(i, 1);
+				if (!ed.items.length) ed.items.push(blankItem());
+				ed.time_ids = []; itemsCtl.redraw(); touch(); drawHours();
+			});
+		};
+		const takeHours = () => {
+			const picked = hp.entries.filter((t) => hp.pick.has(t.id)).sort((a, b) => a.date.localeCompare(b.date));
+			if (!picked.length) return;
+			const item = {
+				_hours: true, sku: '', name: S.settings.hour_name || 'Arbeitsstunden', unit: 'Std.', discount: 0, price: hp.rate,
+				qty: Math.round(picked.reduce((a, t) => a + t.hours, 0) * 100) / 100,
+				description: hp.withNotes ? picked.map((t) => `${date(t.date)}${t.project ? ' · ' + t.project : ''}${t.note ? ' – ' + t.note.replace(/\s*\n\s*/g, '; ') : ''} (${qty(t.hours)} h)`).join('\n') : '',
+			};
+			const i = hourItemIdx();
+			if (i >= 0) ed.items[i] = item;
+			else if (ed.items.length === 1 && !ed.items[0].name && !num(ed.items[0].price)) ed.items[0] = item;
+			else ed.items.push(item);
+			ed.time_ids = picked.map((t) => t.id);
+			itemsCtl.redraw(); touch(); drawHours();
+			toast(fmtH(item.qty) + ' als Position übernommen – beim Ausstellen gelten sie als abgerechnet');
+		};
+		const loadHours = async (auto) => {
+			if (isOffer || !ed.customer_id) { hp.entries = []; drawHours(); return; }
+			try {
+				const r = await api('hours_open', undefined, { query: { customer_id: ed.customer_id, invoice_id: ed.id || 0 } });
+				hp.entries = r.entries; hp.rate = r.rate;
+				// Vorauswahl: verknüpfte, aus der Stundenseite gewählte oder alle
+				const want = String(auto || '');
+				if (ed.time_ids.length) hp.pick = new Set(ed.time_ids);
+				else if (want && want !== '1') hp.pick = new Set(want.split('.').map(Number));
+				else hp.pick = new Set(r.entries.map((t) => t.id));
+				if (auto && hp.entries.length) { hp.open = true; takeHours(); } else drawHours();
+			} catch (e) { /* Leiste ist optional */ }
+		};
 
 		$$('[name]', main).forEach((i) => {
 			if (i.closest('#items') || i.closest('#svc')) return;
@@ -1234,7 +1323,7 @@
 		});
 		$('#lines').oninput = (e) => { ed.recipient.lines = e.target.value.split('\n').map((s) => s.trim()).filter(Boolean); touch(); };
 
-		const setCustomer = (c) => {
+		const setCustomer = (c, skipHours) => {
 			ed.customer_id = +c.id;
 			ed.recipient = { name: c.name, number: c.number, lines: c.lines || [], email: c.email };
 			if (c.payment_days !== null && c.payment_days !== '' && c.payment_days !== undefined) { ed.payment_days = +c.payment_days; $('[name=payment_days]').value = String(c.payment_days); }
@@ -1243,7 +1332,9 @@
 			$('#cust').value = c.name;
 			$('#lines').value = ed.recipient.lines.join('\n');
 			ed.refresh_recipient = true;
+			if (ed.time_ids?.length) { const i = hourItemIdx(); if (i >= 0) ed.items.splice(i, 1); if (!ed.items.length) ed.items.push(blankItem()); ed.time_ids = []; itemsCtl.redraw(); }
 			touch();
+			if (!skipHours) loadHours();
 		};
 		autocomplete($('#cust'), customerSource, (c) => {
 			if (c._new) return customerDrawer({ company: c.name }, (saved) => setCustomer(saved));
@@ -1251,7 +1342,9 @@
 		}, { always: true });
 		// Anschriftzeilen eines vorausgewählten Kunden (aus „Neue Rechnung für Kunde“)
 		if (inv._fromCustomer && (!ed.recipient.lines || !ed.recipient.lines.length)) {
-			api('customer', undefined, { query: { id: ed.customer_id } }).then((c) => setCustomer(c)).then(() => (view.dirty = false)).catch(() => {});
+			api('customer', undefined, { query: { id: ed.customer_id } }).then((c) => setCustomer(c, true)).then(() => { view.dirty = false; loadHours(inv._hours); }).catch(() => {});
+		} else {
+			loadHours(inv._hours);
 		}
 
 		const payload = () => {
@@ -1419,6 +1512,7 @@
 						<div class="btns" style="flex-direction:column;align-items:stretch">
 							<button class="btn" data-dup>${icon('copy')} Als neues Angebot kopieren</button>
 							${!inv.sent_at ? `<button class="btn ghost" data-marksent>${icon('check')} Als versendet markieren</button>` : ''}
+							<button class="btn ghost danger" data-delete>${icon('trash')} Angebot löschen</button>
 						</div>
 						<p class="muted" style="font-size:12.5px;margin-top:12px">„In Rechnung umwandeln“ legt einen Rechnungsentwurf mit denselben Positionen an und markiert das Angebot als angenommen.</p>
 					</div>
@@ -1453,6 +1547,205 @@
 		$('[data-marksent]', main)?.addEventListener('click', async () => { try { reload(await api('invoice_mark_sent', { id: inv.id })); } catch (e) { fail(e); } });
 		$('[data-mail]', main).onclick = () => mailDialog(inv, 'invoice', reload);
 		$('[data-share]', main).onclick = () => sharePdf(pdfUrl, title, inv);
+		$('[data-delete]', main).onclick = () => deleteDoc(inv);
+	}
+
+	/** Rechnung, Stornorechnung oder Angebot löschen – mit Auskunft, was mit der Nummer passiert. */
+	async function deleteDoc(inv) {
+		const offer = inv.kind === 'offer';
+		const what = offer ? 'Angebot' : inv.kind === 'storno' ? 'Stornorechnung' : 'Rechnung';
+		if (inv.storno) return fail(new Error(`Zu dieser Rechnung gibt es die Stornorechnung ${inv.storno.number} – bitte zuerst diese löschen.`));
+		const next = offer ? +String(S.next_offer).replace('A-', '') : +S.next_number;
+		const n = offer ? +String(inv.number).replace('A-', '') : +inv.number;
+		const last = n + 1 === next;
+		const notes = [
+			last ? `Es ist die zuletzt vergebene Nummer – <b>${esc(inv.number)}</b> wird beim nächsten ${offer ? 'Angebot' : 'Ausstellen'} wieder vergeben.` : `Die Nummer <b>${esc(inv.number)}</b> bleibt frei, es wird mit ${esc(offer ? S.next_offer : S.next_number)} weitergezählt.`,
+			inv.payments?.length ? `${inv.payments.length} erfasste Zahlung${inv.payments.length > 1 ? 'en werden' : ' wird'} mitgelöscht.` : '',
+			inv.time_ids?.length ? `${inv.time_ids.length} Stundeneinträge werden wieder offen.` : '',
+			inv.kind === 'storno' ? 'Die stornierte Rechnung gilt danach wieder.' : '',
+			!offer ? 'Hinweis: Ausgestellte Rechnungen sind aufzubewahren – bei Fehlern ist Stornieren meist der richtige Weg.' : '',
+		].filter(Boolean);
+		const ok = await confirmDialog(`${what} ${inv.number} löschen?`, notes.map((x) => `<span style="display:block;margin-bottom:6px">${x}</span>`).join(''), 'Endgültig löschen', { danger: true });
+		if (!ok) return;
+		try {
+			const r = await api('invoice_delete', { id: inv.id });
+			await refresh();
+			go(offer ? '#/angebote' : '#/rechnungen');
+			toast(`${what} ${inv.number} gelöscht` + (r.reused ? ' – Nummer wird wieder vergeben' : ''));
+		} catch (e) { fail(e); }
+	}
+
+	/* ================================================================ Stunden */
+
+	/** „1,5“, „1.5“, „1:30“, „90m“, „2h“, „1h 15m“ → Stunden (wie nw_parse_hours im Server). */
+	const parseHours = (v) => {
+		v = String(v ?? '').trim().toLowerCase().replace(',', '.');
+		let m = v.match(/^(\d+):(\d{1,2})$/);
+		if (m) return Math.round((+m[1] + +m[2] / 60) * 100) / 100;
+		m = v.match(/^(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+)\s*m(?:in)?)?$/);
+		if (v && m && (m[1] || m[2])) return Math.round(((+m[1] || 0) + (+m[2] || 0) / 60) * 100) / 100;
+		return isNaN(+v) ? 0 : Math.round(+v * 100) / 100;
+	};
+	const fmtH = (h) => qty(Math.round(h * 100) / 100) + ' h';
+	const HOUR_STATE = { open: ['offen', 'b-open'], draft: ['im Entwurf', 'b-draft'], billed: ['abgerechnet', 'b-paid'] };
+	const hourBadge = (t) => `<span class="badge ${HOUR_STATE[t.state][1]}">${HOUR_STATE[t.state][0]}${t.invoice_number ? ' · ' + esc(t.invoice_number) : ''}</span>`;
+
+	/* Stoppuhr: läuft im Browser weiter (auch nach Neuladen), pro Gerät */
+	const timer = {
+		get: () => store.get('timer', null),
+		start: () => store.set('timer', { start: Date.now() }),
+		stop: () => { const t = store.get('timer', null); store.set('timer', null); return t ? (Date.now() - t.start) / 3600000 : 0; },
+		label: () => { const t = store.get('timer', null); if (!t) return ''; const sec = Math.floor((Date.now() - t.start) / 1000); return [Math.floor(sec / 3600), Math.floor(sec / 60) % 60, sec % 60].map((n) => String(n).padStart(2, '0')).join(':'); },
+	};
+
+	/**
+	 * Erfassungsformular (Seite, Kunde, Übersicht, Dialog).
+	 * o.customer – fester Kunde · o.entry – bearbeiten · o.projects – Vorschläge · o.onSaved
+	 */
+	function hourForm(box, o = {}) {
+		const e = o.entry || {};
+		let cust = o.customer || (e.customer_id ? customerById(e.customer_id) : customerById(store.get('hours.customer', 0)));
+		box.innerHTML = `<form class="hour-form" autocomplete="off">
+			${o.customer ? '' : `<div class="field hf-cust"><span>Kunde</span><div style="position:relative"><input type="text" name="cust" placeholder="Kunde suchen …" value="${esc(cust?.name || '')}"></div></div>`}
+			<label class="field hf-date"><span>Datum</span><input type="date" name="date" value="${e.date || S.today}"></label>
+			<div class="field hf-hours"><span>Dauer</span><div class="hf-dur"><input type="text" name="hours" inputmode="decimal" placeholder="1,5 oder 1:30" value="${e.hours ? qty(e.hours) : ''}" ${e.state === 'billed' ? 'disabled' : ''}>
+				<div class="hf-quick">${[0.25, 0.5, 1].map((h) => `<button type="button" class="chip" data-add="${h}">+${h === 0.25 ? '¼' : h === 0.5 ? '½' : '1'}</button>`).join('')}</div></div></div>
+			<label class="field hf-proj"><span>Projekt <small>(optional)</small></span><input type="text" name="project" value="${esc(e.project || '')}" list="hf-projects-${o.id || 'x'}" placeholder="z. B. Website-Relaunch"><datalist id="hf-projects-${o.id || 'x'}">${(o.projects || []).map((p) => `<option>${esc(p)}</option>`).join('')}</datalist></label>
+			<label class="field hf-note"><span>Was wurde gemacht?</span><textarea name="note" rows="${o.compact ? 2 : 3}" placeholder="Kurz notieren – erscheint auf Wunsch in der Rechnung">${esc(e.note || '')}</textarea></label>
+			<div class="hf-actions">
+				${e.id ? '' : `<button type="button" class="btn" data-timer>${icon(timer.get() ? 'ban' : 'play')} <span data-timer-label>${timer.get() ? timer.label() : 'Stoppuhr'}</span></button>`}
+				<span class="grow"></span>
+				<button type="submit" class="btn primary">${icon('check')} ${e.id ? 'Speichern' : 'Stunden erfassen'}</button>
+			</div>
+		</form>`;
+		const f = $('form', box);
+		if (!o.customer) autocomplete($('[name=cust]', f), (q) => customerSource(q).filter((x) => !x.value._new), (c) => { cust = c; $('[name=cust]', f).value = c.name; $('[name=hours]', f).focus(); }, { always: true });
+		$$('[data-add]', f).forEach((b) => (b.onclick = () => { const i = $('[name=hours]', f); i.value = qty(parseHours(i.value) + +b.dataset.add); i.focus(); }));
+		// Stoppuhr
+		let tick = null;
+		const tb = $('[data-timer]', f);
+		const drawTimer = () => { if (!tb) return; const on = !!timer.get(); tb.classList.toggle('running', on); tb.innerHTML = `${icon(on ? 'ban' : 'play')} <span data-timer-label>${on ? timer.label() : 'Stoppuhr'}</span>`; };
+		const run = () => { clearInterval(tick); if (timer.get()) tick = setInterval(() => { if (!document.body.contains(f)) return clearInterval(tick); const l = $('[data-timer-label]', f); if (l) l.textContent = timer.label(); }, 1000); };
+		if (tb) tb.onclick = () => {
+			if (timer.get()) {
+				const h = Math.max(0.25, Math.ceil(timer.stop() * 4) / 4); // auf Viertelstunden aufrunden
+				$('[name=hours]', f).value = qty(h);
+				toast('Stoppuhr angehalten – ' + fmtH(h) + ' eingetragen');
+				$('[name=note]', f).focus();
+			} else { timer.start(); toast('Stoppuhr läuft'); }
+			drawTimer(); run();
+		};
+		drawTimer(); run();
+		f.onsubmit = async (ev) => {
+			ev.preventDefault();
+			const c = o.customer || cust;
+			const h = parseHours($('[name=hours]', f).value);
+			if (!c) return fail(new Error('Bitte einen Kunden wählen.'));
+			if (!(h > 0)) return fail(new Error('Bitte die Dauer angeben, z. B. 1,5 oder 1:30.'));
+			try {
+				const saved = await api('hours_save', { id: e.id || 0, customer_id: +c.id, date: $('[name=date]', f).value, hours: e.state === 'billed' ? e.hours : h, project: $('[name=project]', f).value, note: $('[name=note]', f).value });
+				store.set('hours.customer', +c.id);
+				if (!e.id) { $('[name=hours]', f).value = ''; $('[name=note]', f).value = ''; }
+				toast(e.id ? 'Gespeichert' : fmtH(saved.hours) + ' für ' + (c.name || '') + ' erfasst');
+				o.onSaved?.(saved);
+			} catch (er) { fail(er); }
+		};
+		return f;
+	}
+
+	function hourDrawer(entry, after) {
+		const el = drawer(entry.id ? 'Stunden bearbeiten' : 'Stunden erfassen', '<div id="hd"></div>', entry.id && entry.state !== 'billed' ? `<button class="btn ghost danger" data-del>${icon('trash')} Löschen</button>` : '');
+		hourForm($('#hd', el), { entry, customer: entry.customer_id && entry.fixed ? customerById(entry.customer_id) : null, id: 'd', onSaved: (t) => { closeTop(); after?.(t); } });
+		$('[data-del]', el)?.addEventListener('click', async () => {
+			if (!await confirmDialog('Eintrag löschen?', `${fmtH(entry.hours)} vom ${date(entry.date)} werden gelöscht.`, 'Löschen', { danger: true })) return;
+			try { await api('hours_delete', { id: entry.id }); closeTop(); toast('Gelöscht'); after?.(); } catch (e) { fail(e); }
+		});
+	}
+
+	async function viewHours(q) {
+		const main = $('#main');
+		let data = await api('hours');
+		let f = q.f || store.get('hours.f', 'open'), cust = q.kunde ? +q.kunde : 0, search = '';
+		const sel = new Set();
+		main.innerHTML = `<div class="page">
+			${pageHead('Stunden', { sub: 'Zeit für Kunden und Projekte mitschreiben – und mit einem Klick abrechnen' }, `<a class="btn" href="api.php?a=export_hours">${icon('download')} CSV</a>`)}
+			<div class="grid g-main">
+				<div class="grid" style="align-content:start">
+					<section class="card card-pad"><h2 style="margin-bottom:14px">Stunden erfassen</h2><div id="hform"></div></section>
+					<section class="card">
+						<div class="card-head"><h2>Einträge</h2></div>
+						<div class="card-body" style="padding-top:10px">
+							<div class="toolbar" style="margin-bottom:10px">
+								<div class="chips" id="hchips"></div><div class="grow"></div>
+								<select id="hcust" style="width:auto;max-width:220px"></select>
+								<label class="search" style="min-width:160px"><span class="sr">Suchen</span>${icon('search')}<input type="search" id="hq" placeholder="Notiz, Projekt …"></label>
+							</div>
+							<div id="hbulk"></div>
+							<div class="table-wrap" id="hlist"></div>
+						</div>
+					</section>
+				</div>
+				<div class="grid" style="align-content:start" id="hside"></div>
+			</div></div>`;
+		const reload = async () => { data = await api('hours'); draw(); side(); };
+		hourForm($('#hform'), { projects: data.summary.projects, id: 'p', onSaved: reload });
+		const side = () => {
+			const sm = data.summary;
+			$('#hside').innerHTML = `
+				<div class="grid g2" style="gap:12px">
+					<div class="card kpi"><div class="label">Diese Woche</div><div class="value num">${fmtH(sm.week)}</div></div>
+					<div class="card kpi"><div class="label">Dieser Monat</div><div class="value num">${fmtH(sm.month)}</div></div>
+				</div>
+				<section class="card">
+					<div class="card-head"><h2>Offen nach Kunde</h2><span class="muted num" style="font-size:13px">${fmtH(sm.open_h)}${sm.open_val ? ' · ' + money(sm.open_val) : ''}</span></div>
+					<div class="card-body" style="padding-top:4px">${sm.open.length ? `<div class="list">${sm.open.map((o) => `
+						<div class="list-item"><div class="li-main"><div class="li-title"><a href="#/kunde/${o.customer_id}" style="text-decoration:none">${esc(o.customer_name)}</a></div>
+							<div class="li-sub" style="white-space:normal">${fmtH(o.hours)}${o.rate ? ' · <b>' + money(o.value) + '</b>' : ''} · ${o.entries} Eintr${o.entries === 1 ? 'ag' : 'äge'} seit ${date(o.since)}</div></div>
+							<a class="btn sm" href="#/rechnung/neu?kunde=${o.customer_id}&stunden=1" title="Rechnung mit diesen Stunden erstellen">${icon('file')} Rechnung</a>
+						</div>`).join('')}</div>` : '<div class="empty"><span class="big">[ ✓ ]</span>Alles abgerechnet.</div>'}</div>
+				</section>
+				${sm.rate ? '' : `<div class="hint">Tipp: Unter <a href="#/einstellungen/nummern">Einstellungen → Nummern & Steuer</a> einen Standard-Stundensatz eintragen, pro Kunde lässt er sich überschreiben.</div>`}`;
+		};
+		const draw = () => {
+			store.set('hours.f', f);
+			const all = data.entries;
+			const filters = [['open', 'Offen'], ['billed', 'Abgerechnet'], ['all', 'Alle']];
+			const base = all.filter((t) => !cust || +t.customer_id === cust);
+			$('#hchips').innerHTML = filters.map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-f="${k}">${l} <span class="n">${base.filter((t) => k === 'all' || (k === 'open' ? t.state !== 'billed' : t.state === 'billed')).length}</span></button>`).join('');
+			$$('#hchips .chip').forEach((c) => (c.onclick = () => { f = c.dataset.f; sel.clear(); draw(); }));
+			const custs = [...new Map(all.map((t) => [+t.customer_id, t.customer_name])).entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+			$('#hcust').innerHTML = `<option value="0">Alle Kunden</option>` + custs.map(([id, n]) => `<option value="${id}" ${id === cust ? 'selected' : ''}>${esc(n)}</option>`).join('');
+			const n = norm(search);
+			const rows = base.filter((t) => (f === 'all' || (f === 'open' ? t.state !== 'billed' : t.state === 'billed')) && (!n || norm(t.note + ' ' + t.project + ' ' + t.customer_name).includes(n)));
+			const sum = rows.reduce((a, t) => a + t.hours, 0);
+			$('#hlist').innerHTML = rows.length ? `<table class="table resp"><thead><tr><th style="width:36px"><input type="checkbox" id="hall" aria-label="Alle offenen auswählen"></th><th>Datum</th><th>Kunde · Projekt</th><th class="th-r">Dauer</th><th>Status</th></tr></thead><tbody>
+				${rows.map((t) => `<tr class="click" data-id="${t.id}">
+					<td class="m-a">${t.state === 'billed' ? '' : `<input type="checkbox" data-sel="${t.id}" ${sel.has(t.id) ? 'checked' : ''} aria-label="Auswählen">`}</td>
+					<td class="m-c muted nowrap">${date(t.date)}</td>
+					<td class="m-b strong">${esc(t.customer_name)}${t.project ? ` <span class="muted" style="font-weight:500">· ${esc(t.project)}</span>` : ''}<div class="sub" style="white-space:normal;max-width:none">${esc(t.note)}</div></td>
+					<td class="m-d td-r num strong">${fmtH(t.hours)}</td>
+					<td class="m-e">${hourBadge(t)}</td></tr>`).join('')}</tbody></table>
+				<div class="sumbar"><span>${rows.length} Einträge</span><span>Summe <b class="num">${fmtH(sum)}</b></span></div>`
+				: `<div class="empty"><span class="big">[ ]</span>${f === 'open' ? 'Keine offenen Stunden.' : 'Keine Einträge.'}</div>`;
+			$$('#hlist tr[data-id]').forEach((tr) => (tr.onclick = (e) => { if (e.target.closest('input')) return; hourDrawer(data.entries.find((t) => t.id === +tr.dataset.id), reload); }));
+			$$('#hlist [data-sel]').forEach((c) => (c.onchange = () => { c.checked ? sel.add(+c.dataset.sel) : sel.delete(+c.dataset.sel); bulk(); }));
+			$('#hall')?.addEventListener('change', (e) => { rows.filter((t) => t.state !== 'billed').forEach((t) => (e.target.checked ? sel.add(t.id) : sel.delete(t.id))); draw(); });
+			bulk();
+		};
+		const bulk = () => {
+			const picked = data.entries.filter((t) => sel.has(t.id));
+			const one = [...new Set(picked.map((t) => +t.customer_id))];
+			$('#hbulk').innerHTML = picked.length ? `<div class="bulkbar"><b>${picked.length} ausgewählt · ${fmtH(picked.reduce((a, t) => a + t.hours, 0))}</b><span class="grow"></span>
+				${one.length === 1 ? `<a class="btn sm primary" href="#/rechnung/neu?kunde=${one[0]}&stunden=${[...sel].join('.')}">${icon('file')} Rechnung erstellen</a>` : ''}
+				<button class="btn sm" data-markbilled>${icon('check')} Als abgerechnet markieren</button></div>` : '';
+			$('[data-markbilled]', main)?.addEventListener('click', async () => {
+				if (!await confirmDialog('Als abgerechnet markieren?', `${picked.length} Einträge werden ohne Rechnung als abgerechnet markiert (z. B. bar bezahlt oder pauschal verrechnet).`, 'Markieren')) return;
+				try { await api('hours_mark', { ids: [...sel], billed: 1 }); sel.clear(); toast('Als abgerechnet markiert'); reload(); } catch (e) { fail(e); }
+			});
+		};
+		$('#hcust').onchange = (e) => { cust = +e.target.value; sel.clear(); draw(); };
+		$('#hq').oninput = debounce((e) => { search = e.target.value; draw(); }, 120);
+		draw(); side();
 	}
 
 	/* ================================================================ Kunden */
@@ -1503,12 +1796,30 @@
 				<div class="card kpi"><div class="label">Dauerrechnung</div><div class="value num">${c.recurring.filter((r) => +r.active).length ? money(c.recurring.filter((r) => +r.active).reduce((a, r) => a + r.yearly, 0)) : '—'}</div><div class="sub">${c.recurring.filter((r) => +r.active).length ? 'pro Jahr' : 'keine aktiv'}</div></div>
 			</div>
 			<div class="grid g-main">
+				<div class="grid" style="align-content:start">
 				<div class="card"><div class="card-head"><h2>Rechnungen</h2></div><div class="table-wrap">${c.invoices.length ? `<table class="table resp"><tbody>
 					${c.invoices.map((i) => `<tr class="click" data-id="${i.id}">
 						<td class="m-a"><button class="check ${i.state === 'paid' ? 'on' : i.state === 'partial' ? 'half' : ''} ${['open', 'overdue', 'paid', 'partial'].includes(i.state) ? '' : 'na'}" data-pay="${i.id}" aria-label="Bezahlt">${icon('check')}</button></td>
 						<td class="m-b"><span class="mono">${esc(i.number || 'Entwurf')}</span> <span class="muted">· ${date(i.invoice_date)}</span><div class="sub">${esc(i.item_names || '')}</div></td>
 						<td class="m-e">${badge(i.state)}</td>
 						<td class="m-d td-r num strong">${money(i.gross)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Noch keine Rechnungen.</div>'}</div></div>
+				${(() => {
+					const openH = c.hours.filter((t) => t.state !== 'billed');
+					const sumH = openH.reduce((a, t) => a + t.hours, 0);
+					return `<section class="card" id="chours">
+						<div class="card-head"><h2>Stunden</h2>
+							${sumH ? `<span class="muted num" style="font-size:13px">${fmtH(sumH)} offen${c.rate ? ' · ' + money(sumH * c.rate) : ''}</span>` : ''}
+							${openH.some((t) => t.state === 'open') ? `<a class="btn sm primary" href="#/rechnung/neu?kunde=${c.id}&stunden=1">${icon('file')} Abrechnen</a>` : ''}</div>
+						<div class="card-body">
+							<details class="hours-add" ${c.hours.length ? '' : 'open'}><summary>${icon('plus')} Stunden erfassen</summary><div id="chform" style="margin-top:12px"></div></details>
+							${c.hours.length ? `<div class="list" style="margin-top:8px">${c.hours.slice(0, 8).map((t) => `
+								<button type="button" class="list-item hour-item" data-hid="${t.id}"><span class="mono muted">${date(t.date)}</span>
+									<div class="li-main"><div class="li-title">${t.project ? esc(t.project) : '<span class="muted">Ohne Projekt</span>'}</div><div class="li-sub">${esc(t.note)}</div></div>
+									${hourBadge(t)}<b class="num">${fmtH(t.hours)}</b></button>`).join('')}</div>
+								${c.hours.length > 8 ? `<a class="btn sm ghost" href="#/stunden?kunde=${c.id}&f=all" style="margin-top:8px">Alle ${c.hours.length} Einträge ${icon('right')}</a>` : ''}` : ''}
+						</div></section>`;
+				})()}
+				</div>
 				<div class="grid" style="align-content:start">
 					<div class="card card-pad">
 						<h3 style="margin-bottom:10px">Anschrift</h3>
@@ -1534,6 +1845,8 @@
 			if (inv.state === 'paid') { await api('invoice_unpay', { id: inv.id }).catch(fail); await refresh(); viewCustomer(id); }
 			else quickPay(inv.id, b, () => viewCustomer(id));
 		}));
+		hourForm($('#chform'), { customer: c, compact: true, id: 'c', onSaved: () => viewCustomer(id) });
+		$$('[data-hid]', main).forEach((b) => (b.onclick = () => hourDrawer({ ...c.hours.find((t) => t.id === +b.dataset.hid), fixed: true }, () => viewCustomer(id))));
 		$('[data-edit]').onclick = () => customerDrawer(c, () => viewCustomer(id));
 		$('[data-rec]').onclick = () => recurringDrawer({ customer_id: +c.id }, () => viewCustomer(id));
 	}
@@ -1558,6 +1871,7 @@
 				<label class="field c6"><span>E-Mail in Kopie <small>(optional, mehrere mit Komma)</small></span><input type="text" name="email_cc" value="${v('email_cc')}"></label>
 				<label class="field c3"><span>Telefon</span><input type="tel" name="phone" value="${v('phone')}"></label>
 				<label class="field c3"><span>Website</span><input type="text" name="website" value="${v('website')}"></label>
+				<label class="field c3"><span>Stundensatz € <small>(leer = Standard${S.settings.hour_rate ? ' ' + esc(S.settings.hour_rate) + ' €' : ''})</small></span><input type="text" inputmode="decimal" name="hour_rate" value="${c.hour_rate !== null && c.hour_rate !== undefined && c.hour_rate !== '' ? String(c.hour_rate).replace('.', ',') : ''}"></label>
 				<label class="field c3"><span>Zahlungsziel</span><select name="payment_days"><option value="">Standard (${S.settings.payment_days} Tage)</option>${[0, 7, 14, 21, 30].map((d) => `<option value="${d}" ${c.payment_days !== null && c.payment_days !== undefined && c.payment_days !== '' && +c.payment_days === d ? 'selected' : ''}>${d ? d + ' Tage' : 'sofort'}</option>`).join('')}</select></label>
 				<label class="field c6"><span>Notiz</span><textarea name="note" rows="3">${v('note')}</textarea></label>
 				${isNew ? '' : `<label class="switch c6"><input type="checkbox" name="archived" ${+c.archived ? 'checked' : ''}> Archiviert (ausgeblendet, Rechnungen bleiben)</label>`}
@@ -1822,7 +2136,7 @@
 	function viewMore() {
 		$('#main').innerHTML = `<div class="page">${pageHead('Mehr')}
 			<div class="card"><div class="card-body"><div class="list">
-				${[['#/angebote', 'offer', 'Angebote', (S.offers || []).filter((o) => o.state === 'sent').length + ' offen'], ['#/dauerrechnungen', 'repeat', 'Dauerrechnungen', S.recurring.filter((r) => +r.active).length + ' aktiv'], ['#/artikel', 'box', 'Artikel', S.products.filter((p) => !+p.archived).length + ' Leistungen'], ['#/ausgaben', 'wallet', 'Ausgaben', 'Belege erfassen'], ['#/einstellungen/design', 'auto', 'Design', 'Farben und Stil der App'], ['#/einstellungen', 'cog', 'Einstellungen', 'Firma, Texte, E-Mail, Sicherung']]
+				${[['#/stunden', 'clock', 'Stunden', 'Zeit erfassen und abrechnen'], ['#/angebote', 'offer', 'Angebote', (S.offers || []).filter((o) => o.state === 'sent').length + ' offen'], ['#/dauerrechnungen', 'repeat', 'Dauerrechnungen', S.recurring.filter((r) => +r.active).length + ' aktiv'], ['#/artikel', 'box', 'Artikel', S.products.filter((p) => !+p.archived).length + ' Leistungen'], ['#/ausgaben', 'wallet', 'Ausgaben', 'Belege erfassen'], ['#/einstellungen/design', 'auto', 'Design', 'Farben und Stil der App'], ['#/einstellungen', 'cog', 'Einstellungen', 'Firma, Texte, E-Mail, Sicherung']]
 					.map(([h, i, l, s]) => `<a class="list-item" href="${h}">${icon(i)}<div class="li-main"><div class="li-title">${l}</div><div class="li-sub">${s}</div></div>${icon('right')}</a>`).join('')}
 				<a class="list-item" href="#/mehr" data-theme-btn="label">${icon(themeIcon())}<span>Design: ${{ auto: 'Automatisch', light: 'Hell', dark: 'Dunkel' }[store.get('theme', 'auto')]}</span></a>
 				<a class="list-item" href="#/mehr" data-logout2>${icon('logout')}<div class="li-main"><div class="li-title">Abmelden</div></div></a>
@@ -1836,7 +2150,7 @@
 	async function viewSettings(tab) {
 		const main = $('#main');
 		const s = S.settings;
-		const tabs = [['firma', 'Firma'], ['design', 'Design'], ['bank', 'Bank & Zahlung'], ['texte', 'Rechnungstexte'], ['mail', 'E-Mail & Automatik'], ['nummern', 'Nummern & Steuer'], ['sicherheit', 'Sicherheit'], ['daten', 'Daten'], ['update', 'Update']];
+		const tabs = [['firma', 'Firma'], ['design', 'Design'], ['bank', 'Bank & Zahlung'], ['texte', 'Rechnungstexte'], ['mail', 'E-Mail & Automatik'], ['nummern', 'Nummern & Steuer'], ['sicherheit', 'Sicherheit'], ['protokoll', 'E-Mail-Protokoll'], ['daten', 'Daten'], ['update', 'Update']];
 		const f = (k, label, opts = {}) => `<label class="field ${opts.c || 'c3'}"><span>${label}${opts.small ? ` <small>${opts.small}</small>` : ''}</span>${opts.area ? `<textarea name="${k}" rows="${opts.rows || 3}">${esc(s[k])}</textarea>` : `<input type="${opts.type || 'text'}" name="${k}" value="${esc(s[k])}" ${opts.attr || ''}>`}</label>`;
 		const base = new URL('.', location.href).href;
 		const body = {
@@ -1883,6 +2197,8 @@
 				<div class="hint" style="display:flex;flex-direction:column;gap:8px"><div>Als Befehl: <code>php ${esc('/pfad/zu/rechnungen/cron.php')}</code></div><div>oder als URL: <code id="cronurl">${esc(base + S.cron_url)}</code> <button class="btn sm" data-copy>${icon('copy')} Kopieren</button></div>
 					<div>Zuletzt gelaufen: <b>${S.settings.cron_last ? date(S.settings.cron_last) + ' ' + S.settings.cron_last.slice(11, 16) : 'noch nie'}</b></div></div>`,
 			nummern: `<div class="form-grid">${f('next_number', 'Nächste Rechnungsnummer', { small: 'mindestens', attr: 'inputmode="numeric"' })}${f('next_customer', 'Nächste Kundennummer', { attr: 'inputmode="numeric"' })}${f('next_sku', 'Nächste Artikelnummer', { attr: 'inputmode="numeric"' })}${f('next_offer', 'Nächste Angebotsnummer', { small: 'ergibt A-…', attr: 'inputmode="numeric"' })}${f('offer_days', 'Angebote gültig (Tage)', { type: 'number', attr: 'min="1"' })}
+				<div class="section-title c6">Stunden</div>
+				${f('hour_rate', 'Stundensatz Standard (€)', { small: 'pro Kunde überschreibbar', attr: 'inputmode="decimal"' })}${f('hour_name', 'Bezeichnung auf der Rechnung', { small: 'z. B. Arbeitsstunden' })}
 				<div class="section-title c6">Umsatzsteuer</div>
 				<label class="switch c6"><input type="checkbox" name="small_business" ${s.small_business === '1' ? 'checked' : ''}> Kleinunternehmer (keine Umsatzsteuer auf Rechnungen)</label>
 				${f('small_business_text', 'Hinweis auf der Rechnung', { c: 'c6' })}${f('revenue_limit', 'Umsatzgrenze (€)', { small: 'seit 2025: 55.000 € brutto' })}${f('default_tax', 'USt.-Satz Standard (%)', { small: 'falls nicht Kleinunternehmer' })}</div>
@@ -1899,6 +2215,9 @@
 					<label class="switch"><input type="checkbox" id="accentpdf" ${S.settings.ui_accent_pdf === '1' ? 'checked' : ''}> Akzentfarbe auch auf Rechnungen und Angeboten (Kopfzeile, Titel)</label>
 					<div class="field" style="max-width:420px"><span>Hell oder dunkel (dieses Gerät)</span><div class="seg" id="lightdark">${[['auto', 'Automatisch'], ['light', 'Hell'], ['dark', 'Dunkel']].map(([k, l]) => `<button type="button" data-ld="${k}" class="${store.get('theme', 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
 				</div>`,
+			protokoll: `<div class="toolbar" style="margin-bottom:12px"><div class="chips"><button type="button" class="chip on" data-lf="all">Alle</button><button type="button" class="chip" data-lf="errors">Nur Fehler</button></div><div class="grow"></div>
+					<label class="search" style="min-width:220px"><span class="sr">Suchen</span>${icon('search')}<input type="search" id="lq" placeholder="Empfänger, Betreff, Nummer …"></label></div>
+				<div id="logstats" class="muted" style="font-size:13px;margin-bottom:10px"></div><div id="loglist"></div>`,
 			update: `<div id="upd"><div class="muted">Suche nach Updates …</div></div>`,
 			daten: `<div class="grid g2">
 				<div class="card card-pad"><h3>Sicherung</h3><p class="muted" style="margin:6px 0 14px">Die komplette Datenbank (Kunden, Artikel, Rechnungen, Einstellungen) als eine Datei. Regelmäßig herunterladen!</p><a class="btn primary" href="api.php?a=backup">${icon('download')} Datenbank sichern</a></div>
@@ -1971,6 +2290,7 @@
 			try { await api('password', { old: $('#pw0').value, new: $('#pw1').value }); toast('Passwort geändert'); $('#pw0').value = $('#pw1').value = ''; } catch (e) { fail(e); }
 		});
 		if (tab === 'update') updatePanel(false);
+		if (tab === 'protokoll') mailLogPanel();
 		if (tab === 'design') {
 			$$('[data-ui-pick]', main).forEach((b) => (b.onclick = async () => {
 				applyUi(b.dataset.uiPick);
@@ -1994,6 +2314,51 @@
 					: `<div class="note-ok">${icon('check')}<span>Datenordner ist von außen nicht erreichbar.</span></div>`;
 			});
 		}
+	}
+
+	/* ================================================================ E-Mail-Protokoll */
+
+	function mailLogPanel() {
+		let errors = false, q = '', offset = 0, rows = [];
+		const KIND = { invoice: 'Rechnung', reminder: 'Erinnerung', offer: 'Angebot', test: 'Testmail' };
+		const load = async (more) => {
+			offset = more ? offset + 100 : 0;
+			let r;
+			try { r = await api('mail_log', undefined, { query: { errors: errors ? 1 : '', q, offset } }); } catch (e) { return fail(e); }
+			rows = more ? rows.concat(r.rows) : r.rows;
+			const st = r.stats || {};
+			$('#logstats').innerHTML = st.total ? `${st.total} Mails protokolliert${+st.failed ? ` · <b style="color:var(--bad)">${st.failed} fehlgeschlagen</b>` : ''} · zuletzt ${relTime(st.last)}` : '';
+			$('#loglist').innerHTML = rows.length ? `<div class="maillog">${rows.map((m) => `
+				<details class="ml-row ${+m.ok ? '' : 'failed'}">
+					<summary>
+						<span class="ml-status" title="${+m.ok ? 'Zugestellt an den Mailserver' : 'Fehlgeschlagen'}">${icon(+m.ok ? 'check' : 'alert')}</span>
+						<span class="ml-when mono">${date(m.created_at.slice(0, 10))} ${m.created_at.slice(11, 16)}</span>
+						<span class="ml-main"><b>${esc(m.to_addr)}</b><span class="muted"> · ${esc(m.subject)}</span></span>
+						<span class="badge plain">${KIND[m.kind] || esc(m.kind)}${m.number ? ' ' + esc(m.number) : ''}</span>
+					</summary>
+					<dl class="ml-detail">
+						<dt>Zeit</dt><dd>${date(m.created_at.slice(0, 10))} ${esc(m.created_at.slice(11))} · ${esc(m.source || 'von Hand')}</dd>
+						<dt>Von</dt><dd>${esc(m.from_addr || '—')}</dd>
+						<dt>An</dt><dd>${esc(m.to_addr)}</dd>
+						${m.cc ? `<dt>Kopie (CC)</dt><dd>${esc(m.cc)}</dd>` : ''}
+						${m.bcc ? `<dt>Blindkopie (BCC)</dt><dd>${esc(m.bcc)}</dd>` : ''}
+						${m.reply_to ? `<dt>Antwort an</dt><dd>${esc(m.reply_to)}</dd>` : ''}
+						<dt>Betreff</dt><dd>${esc(m.subject)}</dd>
+						${m.attachment ? `<dt>Anhang</dt><dd>${esc(m.attachment)}</dd>` : ''}
+						${m.number ? `<dt>Beleg</dt><dd>${m.invoice_id ? `<a href="#/${m.kind === 'offer' ? 'angebot' : 'rechnung'}/${m.invoice_id}">${esc(m.number)}</a>` : esc(m.number) + ' <span class="muted">(gelöscht)</span>'}</dd>` : ''}
+						${m.bytes ? `<dt>Größe</dt><dd>${Math.round(m.bytes / 1024)} KB</dd>` : ''}
+						${m.smtp_host ? `<dt>Server</dt><dd class="mono">${esc(m.smtp_host)}</dd>` : ''}
+						${m.server_reply ? `<dt>Antwort Server</dt><dd class="mono">${esc(m.server_reply)}</dd>` : ''}
+						${m.message_id ? `<dt>Message-ID</dt><dd class="mono" style="word-break:break-all">${esc(m.message_id)}</dd>` : ''}
+						${+m.ok ? '' : `<dt>Fehler</dt><dd style="color:var(--bad);font-weight:600">${esc(m.error)}</dd>`}
+					</dl>
+				</details>`).join('')}</div>${r.more ? `<div style="text-align:center;margin-top:12px"><button type="button" class="btn sm" data-more>Ältere laden</button></div>` : ''}`
+				: `<div class="empty"><span class="big">[ ]</span>${errors || q ? 'Keine passenden Einträge.' : 'Noch keine Mails versendet.'}</div>`;
+			$('[data-more]')?.addEventListener('click', () => load(true));
+		};
+		$$('[data-lf]').forEach((b) => (b.onclick = () => { errors = b.dataset.lf === 'errors'; $$('[data-lf]').forEach((x) => x.classList.toggle('on', x === b)); load(); }));
+		$('#lq').oninput = debounce((e) => { q = e.target.value; load(); }, 250);
+		load();
 	}
 
 	/* ================================================================ Software-Update */
@@ -2042,7 +2407,7 @@
 		if ($('.palette')) return;
 		const el = openLayer(`<label class="search">${icon('search')}<input type="text" id="pq" placeholder="Suche Rechnung, Kunde, Artikel oder Aktion …" autocomplete="off" autofocus></label><div class="results" id="pres"></div>`, 'palette');
 		const actions = [
-			['Neue Rechnung', '#/rechnung/neu', 'plus'], ['Neues Angebot', '#/angebot/neu', 'offer'], ['Offene Angebote', '#/angebote?f=sent', 'offer'], ['Neuer Kunde', () => customerDrawer({}, (c) => go('#/kunde/' + c.id)), 'users'], ['Dauerrechnungen', '#/dauerrechnungen', 'repeat'],
+			['Neue Rechnung', '#/rechnung/neu', 'plus'], ['Neues Angebot', '#/angebot/neu', 'offer'], ['Stunden erfassen', () => hourDrawer({}, () => route()), 'clock'], ['Stunden – Übersicht', '#/stunden', 'clock'], ['Offene Angebote', '#/angebote?f=sent', 'offer'], ['Neuer Kunde', () => customerDrawer({}, (c) => go('#/kunde/' + c.id)), 'users'], ['Dauerrechnungen', '#/dauerrechnungen', 'repeat'],
 			['Offene Rechnungen', '#/rechnungen?f=open', 'file'], ['Ausgabe erfassen', '#/ausgaben', 'wallet'], ['Einstellungen', '#/einstellungen', 'cog'], ['Datenbank sichern', () => (location.href = 'api.php?a=backup'), 'download'],
 		];
 		let items = [], idx = 0;

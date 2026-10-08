@@ -123,6 +123,8 @@ try {
 			$c              = nw_customer_get( $id );
 			$c['invoices']  = nw_invoices_list( array( 'customer_id' => $id ) );
 			$c['offers']    = nw_invoices_list( array( 'customer_id' => $id, 'offers' => true ) );
+			$c['hours']     = nw_time_list( array( 'customer_id' => $id ) );
+			$c['rate']      = nw_hour_rate( $id );
 			$c['recurring'] = array_values( array_filter( nw_recurring_list(), function ( $r ) use ( $id ) { return (int) $r['customer_id'] === $id; } ) );
 			out( $c );
 		case 'customer_save':
@@ -161,8 +163,7 @@ try {
 		case 'offer_convert':
 			out( nw_offer_convert( $id ) );
 		case 'invoice_delete':
-			nw_invoice_delete( $id );
-			out( array( 'ok' => true ) );
+			out( array( 'ok' => true ) + nw_invoice_delete( $id ) );
 		case 'mail_preview':
 			$inv = nw_invoice_get( $id );
 			$m   = nw_mail_compose( $inv, ( $_GET['type'] ?? '' ) === 'reminder' ? 'reminder' : 'invoice' );
@@ -193,6 +194,20 @@ try {
 				out( array( 'error' => 'Kein Original vorhanden.' ), 404 );
 			}
 			send_file( file_get_contents( $file ), basename( $file ), 'application/pdf', ! empty( $_GET['dl'] ) );
+
+		/* ------------------------------------------------ Stunden */
+		case 'hours':
+			out( array( 'entries' => nw_time_list( array( 'customer_id' => (int) ( $_GET['customer_id'] ?? 0 ), 'state' => (string) ( $_GET['state'] ?? 'all' ) ) ), 'summary' => nw_time_summary() ) );
+		case 'hours_open':
+			$cid = (int) ( $_GET['customer_id'] ?? 0 );
+			out( array( 'entries' => array_values( array_filter( nw_time_list( array( 'customer_id' => $cid, 'state' => 'open' ) ), function ( $t ) { return 'open' === $t['state'] || (int) $t['invoice_id'] === (int) ( $_GET['invoice_id'] ?? -1 ); } ) ), 'rate' => nw_hour_rate( $cid ) ) );
+		case 'hours_save':
+			out( nw_time_save( $in ) );
+		case 'hours_delete':
+			nw_time_delete( $id );
+			out( array( 'ok' => true ) );
+		case 'hours_mark':
+			out( array( 'changed' => nw_time_mark( (array) ( $in['ids'] ?? array() ), ! empty( $in['billed'] ) ) ) );
 
 		/* ------------------------------------------------ Dauerrechnungen */
 		case 'recurring':
@@ -341,12 +356,13 @@ try {
 			if ( '' === trim( (string) $cfg['host'] ) ) {
 				out( array( 'error' => 'Bitte zuerst einen SMTP-Server eintragen.' ), 400 );
 			}
-			try {
-				NW_SMTP::send( $cfg, array( 'from' => $cfg['from'] ?: $cfg['user'], 'from_name' => $cfg['from_name'] ?: nw_setting( 'company' ), 'to' => $to, 'reply_to' => nw_reply_to( $cfg, $cfg['from'] ?: $cfg['user'] ), 'subject' => 'Testmail aus dem Rechnungsprogramm', 'text' => "Der E-Mail-Versand funktioniert.\n\n" . date( 'd.m.Y H:i' ) ) );
-			} catch ( Throwable $e ) {
-				out( array( 'error' => $e->getMessage() ), 400 );
+			$r = nw_mail_send( $cfg, array( 'from' => $cfg['from'] ?: $cfg['user'], 'from_name' => $cfg['from_name'] ?: nw_setting( 'company' ), 'to' => $to, 'reply_to' => nw_reply_to( $cfg, $cfg['from'] ?: $cfg['user'] ), 'subject' => 'Testmail aus dem Rechnungsprogramm', 'text' => "Der E-Mail-Versand funktioniert.\n\n" . date( 'd.m.Y H:i' ) ), array( 'kind' => 'test' ) );
+			if ( ! $r['ok'] ) {
+				out( array( 'error' => $r['error'] ), 400 );
 			}
 			out( array( 'ok' => true ) );
+		case 'mail_log':
+			out( nw_mail_log( array( 'errors' => ! empty( $_GET['errors'] ), 'q' => (string) ( $_GET['q'] ?? '' ), 'offset' => (int) ( $_GET['offset'] ?? 0 ), 'limit' => 100 ) ) );
 
 		/* ------------------------------------------------ Software-Update */
 		case 'update_check':
@@ -395,6 +411,15 @@ try {
 			}
 			rewind( $fh );
 			send_file( stream_get_contents( $fh ), 'Ausgaben' . ( $year ? '-' . $year : '' ) . '.csv', 'text/csv; charset=utf-8', true );
+		case 'export_hours':
+			$fh = fopen( 'php://temp', 'w+' );
+			fwrite( $fh, "\xEF\xBB\xBF" );
+			fputcsv( $fh, array( 'Datum', 'Kunde', 'Projekt', 'Notiz', 'Stunden', 'Status', 'Rechnung' ), ';' );
+			foreach ( array_reverse( nw_time_list( array( 'customer_id' => (int) ( $_GET['customer_id'] ?? 0 ) ) ) ) as $t ) {
+				fputcsv( $fh, array( nw_date( $t['date'] ), $t['customer_name'], $t['project'], $t['note'], number_format( $t['hours'], 2, ',', '' ), array( 'open' => 'offen', 'draft' => 'im Entwurf', 'billed' => 'abgerechnet' )[ $t['state'] ], $t['invoice_number'] ), ';' );
+			}
+			rewind( $fh );
+			send_file( stream_get_contents( $fh ), 'Stunden.csv', 'text/csv; charset=utf-8', true );
 		case 'export_pdfs':
 			@set_time_limit( 300 );
 			$year  = preg_replace( '/\D/', '', (string) ( $_GET['year'] ?? '' ) );
