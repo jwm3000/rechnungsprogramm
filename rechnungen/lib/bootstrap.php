@@ -75,6 +75,73 @@ function db() {
 	return $pdo;
 }
 
+/** Größe eines Ordners samt Unterordnern: array( bytes, files ). */
+function nw_dir_size( $dir ) {
+	$bytes = 0;
+	$files = 0;
+	if ( is_dir( $dir ) ) {
+		$it = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $dir, FilesystemIterator::SKIP_DOTS ) );
+		foreach ( $it as $f ) {
+			if ( $f->isFile() ) {
+				$bytes += $f->getSize();
+				++$files;
+			}
+		}
+	}
+	return array( $bytes, $files );
+}
+
+/** Speicherplatz: Datenbank (gesamt, frei, je Tabelle), Dateien im Datenordner, Zustand. */
+function nw_storage_info() {
+	$dir = nw_data_dir();
+	$db  = $dir . '/rechnungen.sqlite';
+	clearstatcache();
+	$page   = (int) db()->query( 'PRAGMA page_size' )->fetchColumn();
+	$pages  = (int) db()->query( 'PRAGMA page_count' )->fetchColumn();
+	$free   = (int) db()->query( 'PRAGMA freelist_count' )->fetchColumn();
+	$wal    = is_file( $db . '-wal' ) ? filesize( $db . '-wal' ) : 0;
+	$sizes  = array();
+	try { // dbstat gibt es nicht in jedem SQLite-Build – dann nur Einträge zählen
+		foreach ( q_all( "SELECT m.tbl_name AS t, SUM(d.pgsize) AS b FROM dbstat d JOIN sqlite_master m ON m.name = d.name GROUP BY m.tbl_name" ) as $r ) {
+			$sizes[ $r['t'] ] = (int) $r['b'];
+		}
+	} catch ( Throwable $e ) {
+		$sizes = array();
+	}
+	$tables = array();
+	foreach ( q_all( "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name" ) as $t ) {
+		$tables[] = array(
+			'name'  => $t['name'],
+			'rows'  => (int) q_val( 'SELECT COUNT(*) FROM "' . str_replace( '"', '', $t['name'] ) . '"' ),
+			'bytes' => $sizes[ $t['name'] ] ?? null,
+		);
+	}
+	list( $files_b, $files_n )     = nw_dir_size( $dir . '/files' );
+	list( $updates_b, $updates_n ) = nw_dir_size( $dir . '/updates' );
+	list( $all_b, $all_n )         = nw_dir_size( $dir );
+	$db_b = ( is_file( $db ) ? filesize( $db ) : 0 ) + $wal + ( is_file( $db . '-shm' ) ? filesize( $db . '-shm' ) : 0 );
+	return array(
+		'db'      => array( 'bytes' => $db_b, 'pages' => $pages * $page, 'free' => $free * $page, 'wal' => $wal, 'ok' => 'ok' === db()->query( 'PRAGMA quick_check' )->fetchColumn(), 'sqlite' => db()->query( 'SELECT sqlite_version()' )->fetchColumn() ),
+		'tables'  => $tables,
+		'files'   => array( 'bytes' => $files_b, 'count' => $files_n ),
+		'updates' => array( 'bytes' => $updates_b, 'count' => $updates_n ),
+		'other'   => max( 0, $all_b - $db_b - $files_b - $updates_b ),
+		'total'   => $all_b,
+		'disk'    => function_exists( 'disk_free_space' ) ? ( @disk_free_space( $dir ) ?: null ) : null,
+	);
+}
+
+/** Freien Platz zurückgeben und Statistik auffrischen. */
+function nw_db_optimize() {
+	$before = nw_storage_info()['db']['bytes'];
+	db()->exec( 'PRAGMA wal_checkpoint(TRUNCATE)' );
+	db()->exec( 'VACUUM' );
+	db()->exec( 'PRAGMA optimize' );
+	$info          = nw_storage_info();
+	$info['saved'] = max( 0, $before - $info['db']['bytes'] );
+	return $info;
+}
+
 function q( $sql, array $args = array() ) {
 	$st = db()->prepare( $sql );
 	$st->execute( $args );

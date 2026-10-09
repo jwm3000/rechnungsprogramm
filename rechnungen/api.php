@@ -83,6 +83,11 @@ try {
 	}
 
 	/* ---------------------------------------------------------------- angemeldet */
+	// Lesen per GET, alles andere nur per POST (mit CSRF-Token, siehe oben)
+	$reads = array( 'bootstrap', 'dashboard', 'customer', 'invoices', 'invoice', 'mail_preview', 'pdf', 'original', 'hours', 'hours_open', 'recurring', 'expenses', 'expense_file', 'mail_log', 'storage', 'update_check', 'export', 'export_expenses', 'export_hours', 'export_pdfs', 'backup' );
+	if ( 'POST' !== $method && ! in_array( $a, $reads, true ) ) {
+		out( array( 'error' => 'Diese Aktion geht nur per POST.' ), 405 );
+	}
 	$id = (int) ( $_GET['id'] ?? $in['id'] ?? 0 );
 
 	switch ( $a ) {
@@ -361,6 +366,10 @@ try {
 				out( array( 'error' => $r['error'] ), 400 );
 			}
 			out( array( 'ok' => true ) );
+		case 'storage':
+			out( nw_storage_info() );
+		case 'db_optimize':
+			out( nw_db_optimize() );
 		case 'mail_log':
 			out( nw_mail_log( array( 'errors' => ! empty( $_GET['errors'] ), 'q' => (string) ( $_GET['q'] ?? '' ), 'offset' => (int) ( $_GET['offset'] ?? 0 ), 'limit' => 100 ) ) );
 

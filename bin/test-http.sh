@@ -66,6 +66,10 @@ check "$(tail -1 <<<"$R")" 400 "PHP-Datei als Beleg abgelehnt"
 R=$(post invoice '{"id":999999}')
 contains "$R" "nicht gefunden" "unbekannte Rechnung sauber gemeldet"
 check "$(code -X POST -b "$JAR" -H 'Content-Type: application/json' -d '{}' "$BASE/api.php?a=logout")" 403 "Abmelden ohne CSRF abgelehnt"
+check "$(code -b "$JAR" "$BASE/api.php?a=invoice_delete&id=$IID")" 405 "Löschen per Link-Aufruf (GET) abgelehnt"
+check "$(code -b "$JAR" "$BASE/api.php?a=db_optimize")" 405 "Optimieren per GET abgelehnt"
+S=$(curl -s -b "$JAR" "$BASE/api.php?a=storage")
+contains "$S" '"ok":true' "Speicherplatz und Datenbank-Prüfung abrufbar"
 
 echo "· Ohne Anmeldung"
 check "$(code "$BASE/api.php?a=bootstrap")" 401 "Daten ohne Anmeldung gesperrt"
@@ -73,6 +77,7 @@ check "$(code "$BASE/api.php?a=backup")" 401 "Sicherung ohne Anmeldung gesperrt"
 check "$(code "$BASE/api.php?a=pdf&id=$IID")" 401 "PDF ohne Anmeldung gesperrt"
 check "$(code "$BASE/api.php?a=mail_log")" 401 "E-Mail-Protokoll ohne Anmeldung gesperrt"
 check "$(code "$BASE/api.php?a=hours")" 401 "Stunden ohne Anmeldung gesperrt"
+check "$(code "$BASE/api.php?a=storage")" 401 "Speicherplatz ohne Anmeldung gesperrt"
 
 echo "· Schutz gegen Passwort-Raten"
 J2="$(mktemp)"

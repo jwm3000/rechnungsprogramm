@@ -185,6 +185,17 @@ eq( array( $log['to_addr'], $log['cc'], $log['bcc'], $log['number'], (int) $log[
 ok( false !== strpos( $log['attachment'], 'R.pdf' ) && '' !== $log['error'], 'Anhang und Fehlermeldung protokolliert' );
 eq( count( nw_mail_log( array( 'errors' => true ) )['rows'] ), 1, 'Filter „nur Fehler“' );
 
+section( 'Speicherplatz' );
+$st = nw_storage_info();
+ok( $st['db']['bytes'] > 0 && $st['total'] >= $st['db']['bytes'], 'Datenbankgröße ermittelt' );
+ok( $st['db']['ok'], 'Datenbank-Prüfung in Ordnung' );
+$tn = array_column( $st['tables'], 'rows', 'name' );
+eq( $tn['time_entries'], (int) q_val( 'SELECT COUNT(*) FROM time_entries' ), 'Einträge je Bereich gezählt' );
+q( "INSERT INTO activity (invoice_id, text, created_at) SELECT NULL, printf('%.2000c', 'x'), datetime('now') FROM invoice_items LIMIT 200" );
+q( "DELETE FROM activity WHERE length(text) = 2000" );
+$op = nw_db_optimize();
+eq( $op['db']['free'], 0, 'Optimieren gibt freien Platz zurück' );
+
 section( 'PDF & Schrumpfen' );
 $pdf = NW_Document::render( nw_invoice_get( $inv['id'] ) );
 ok( 0 === strpos( $pdf, '%PDF-1.4' ) && false !== strpos( $pdf, '%%EOF' ), 'gültiges PDF' );

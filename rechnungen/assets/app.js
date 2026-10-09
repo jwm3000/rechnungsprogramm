@@ -2318,7 +2318,7 @@
 					<label class="search" style="min-width:220px"><span class="sr">Suchen</span>${icon('search')}<input type="search" id="lq" placeholder="Empfänger, Betreff, Nummer …"></label></div>
 				<div id="logstats" class="muted" style="font-size:13px;margin-bottom:10px"></div><div id="loglist"></div>`,
 			update: `<div id="upd"><div class="muted">Suche nach Updates …</div></div>`,
-			daten: `<div class="grid g2">
+			daten: `<div id="storage" style="margin-bottom:16px"></div><div class="grid g2">
 				<div class="card card-pad"><h3>Sicherung</h3><p class="muted" style="margin:6px 0 14px">Die komplette Datenbank (Kunden, Artikel, Rechnungen, Einstellungen) als eine Datei. Regelmäßig herunterladen!</p><a class="btn primary" href="api.php?a=backup">${icon('download')} Datenbank sichern</a></div>
 				<div class="card card-pad"><h3>Export</h3><p class="muted" style="margin:6px 0 14px">Rechnungsliste als CSV für die Steuerberatung oder alle Rechnungen als PDF in einer ZIP-Datei.</p><button class="btn" data-export>${icon('download')} Exportieren …</button></div>
 			</div>
@@ -2390,6 +2390,7 @@
 		});
 		if (tab === 'update') updatePanel(false);
 		if (tab === 'protokoll') mailLogPanel();
+		if (tab === 'daten') storagePanel();
 		if (tab === 'design') {
 			$$('[data-ui-pick]', main).forEach((b) => (b.onclick = async () => {
 				applyUi(b.dataset.uiPick);
@@ -2413,6 +2414,72 @@
 					: `<div class="note-ok">${icon('check')}<span>Datenordner ist von außen nicht erreichbar.</span></div>`;
 			});
 		}
+	}
+
+	/* ================================================================ Speicherplatz */
+
+	function fmtBytes(b) {
+		b = +b || 0;
+		if (b < 1024) return b + ' B';
+		const u = ['KB', 'MB', 'GB', 'TB'];
+		let i = -1;
+		do { b /= 1024; i++; } while (b >= 1024 && i < u.length - 1);
+		return (b >= 100 || i === 0 ? Math.round(b) : b.toFixed(1).replace('.', ',')) + ' ' + u[i];
+	}
+
+	const TABLE_LABEL = {
+		invoices: ['Rechnungen & Angebote', 'file'], invoice_items: ['Positionen', 'file'], customers: ['Kunden', 'users'], products: ['Artikel', 'box'],
+		recurring: ['Dauerrechnungen', 'repeat'], payments: ['Zahlungen', 'wallet'], time_entries: ['Stunden', 'clock'], expenses: ['Ausgaben', 'wallet'],
+		mail_log: ['E-Mail-Protokoll', 'mail'], activity: ['Verlauf', 'chart'], logins: ['Anmeldeversuche', 'key'], settings: ['Einstellungen', 'cog'],
+	};
+
+	async function storagePanel() {
+		const box = $('#storage');
+		if (!box) return;
+		box.innerHTML = `<div class="card card-pad"><h3>Speicherplatz</h3><p class="muted" style="margin:8px 0 0">Wird berechnet …</p></div>`;
+		let s;
+		try { s = await api('storage'); } catch (e) { box.innerHTML = ''; return fail(e); }
+		const parts = [
+			['Datenbank', s.db.bytes, 'st-c1', `${s.tables.reduce((a, t) => a + t.rows, 0).toLocaleString('de-AT')} Einträge`],
+			['Original-PDFs & Belege', s.files.bytes, 'st-c2', `${s.files.count} Dateien`],
+			['Sicherungen vor Updates', s.updates.bytes, 'st-c3', `${s.updates.count} Dateien`],
+			['Sonstiges', s.other, 'st-c4', 'Logo, Schlüssel, Temporäres'],
+		];
+		const total = Math.max(1, s.total);
+		const known = s.tables.some((t) => t.bytes !== null);
+		const rows = s.tables.filter((t) => t.rows || t.bytes > 4096).sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0) || b.rows - a.rows);
+		const maxB = Math.max(1, ...rows.map((t) => (known ? t.bytes : t.rows) || 0));
+		const reclaim = s.db.free + s.db.wal;
+		box.innerHTML = `<div class="card card-pad storage">
+			<div class="st-head"><div><h3>Speicherplatz</h3><p class="muted" style="margin:4px 0 0">Alles im Datenordner – Datenbank, hochgeladene Dateien und Sicherungen</p></div>
+				<button type="button" class="btn sm ghost" data-st-reload>${icon('repeat')} Neu berechnen</button></div>
+			<div class="st-total"><b class="num">${fmtBytes(s.total)}</b><span class="muted">belegt${s.disk ? ` · ${fmtBytes(s.disk)} frei auf dem Server` : ''}</span></div>
+			<div class="st-bar" role="img" aria-label="Aufteilung des Speicherplatzes">${parts.filter((p) => p[1]).map((p) => `<i class="${p[2]}" style="width:${Math.max(0.6, (p[1] / total) * 100)}%" title="${p[0]}: ${fmtBytes(p[1])}"></i>`).join('')}</div>
+			<div class="st-legend">${parts.map((p) => `<div><span class="st-dot ${p[2]}"></span><div><b>${p[0]}</b><div class="muted">${fmtBytes(p[1])} · ${p[3]}</div></div></div>`).join('')}</div>
+			<h4 class="st-sub">Inhalt der Datenbank</h4>
+			<div class="st-tables">${rows.map((t) => {
+				const [label, ic] = TABLE_LABEL[t.name] || [t.name, 'box'];
+				const v = (known ? t.bytes : t.rows) || 0;
+				return `<div class="st-row">${icon(ic)}<span class="st-name">${esc(label)}</span><span class="st-meter"><i style="width:${Math.max(1, (v / maxB) * 100)}%"></i></span>
+					<span class="num muted st-n">${t.rows.toLocaleString('de-AT')}</span>${known ? `<b class="num st-b">${fmtBytes(t.bytes)}</b>` : ''}</div>`;
+			}).join('')}</div>
+			${known ? '' : '<p class="muted" style="font-size:12.5px;margin:8px 0 0">Die Größe je Bereich kann dieser Server nicht ermitteln – angezeigt wird die Anzahl der Einträge.</p>'}
+			<div class="st-foot">
+				<span class="st-health ${s.db.ok ? 'ok' : 'bad'}">${icon(s.db.ok ? 'check' : 'alert')} ${s.db.ok ? 'Datenbank geprüft – in Ordnung' : 'Prüfung meldet Fehler – bitte sofort eine Sicherung herunterladen'}</span>
+				<span class="muted">SQLite ${esc(s.db.sqlite)}${reclaim > 0 ? ` · ${fmtBytes(reclaim)} ungenutzt` : ''}</span>
+				<span class="grow"></span>
+				<button type="button" class="btn sm" data-st-opt ${reclaim > 0 ? '' : 'disabled title="Die Datenbank ist bereits kompakt"'}>${icon('check')} Datenbank optimieren</button>
+			</div>
+		</div>`;
+		$('[data-st-reload]', box).onclick = () => storagePanel();
+		$('[data-st-opt]', box).onclick = async (e) => {
+			e.currentTarget.disabled = true;
+			try {
+				const r = await api('db_optimize', {});
+				toast(r.saved > 0 ? `Datenbank optimiert – ${fmtBytes(r.saved)} frei geworden` : 'Datenbank optimiert – war bereits kompakt');
+				storagePanel();
+			} catch (er) { fail(er); e.currentTarget.disabled = false; }
+		};
 	}
 
 	/* ================================================================ E-Mail-Protokoll */
@@ -2445,7 +2512,7 @@
 						<dt>Betreff</dt><dd>${esc(m.subject)}</dd>
 						${m.attachment ? `<dt>Anhang</dt><dd>${esc(m.attachment)}</dd>` : ''}
 						${m.number ? `<dt>Beleg</dt><dd>${m.invoice_id ? `<a href="#/${m.kind === 'offer' ? 'angebot' : 'rechnung'}/${m.invoice_id}">${esc(m.number)}</a>` : esc(m.number) + ' <span class="muted">(gelöscht)</span>'}</dd>` : ''}
-						${m.bytes ? `<dt>Größe</dt><dd>${Math.round(m.bytes / 1024)} KB</dd>` : ''}
+						${m.bytes ? `<dt>Größe</dt><dd>${fmtBytes(m.bytes)}</dd>` : ''}
 						${m.smtp_host ? `<dt>Server</dt><dd class="mono">${esc(m.smtp_host)}</dd>` : ''}
 						${m.server_reply ? `<dt>Antwort Server</dt><dd class="mono">${esc(m.server_reply)}</dd>` : ''}
 						${m.message_id ? `<dt>Message-ID</dt><dd class="mono" style="word-break:break-all">${esc(m.message_id)}</dd>` : ''}
@@ -2483,7 +2550,7 @@
 			${u.newer && notes ? `<div class="section-title">Was ist neu</div><div class="hint" style="white-space:pre-wrap;font-size:13.5px;color:var(--ink-2)">${esc(notes)}</div>` : ''}
 			<div class="hint" style="margin-top:16px">Updates kommen von <a href="https://github.com/${esc(u.repo)}/releases" target="_blank" rel="noopener"><code>${esc(u.repo || '–')}</code></a>. Vor jedem Update werden Programm und Datenbank gesichert. Deine Daten (<code>data/</code>) und die <code>config.php</code> werden nie überschrieben.</div>
 			${u.backups?.length ? `<div class="section-title">Sicherungen vor Updates</div><div class="list">${u.backups.map((b) => `
-				<div class="list-item"><div class="li-main"><div class="li-title mono">${esc(b.name)}</div><div class="li-sub">${relTime(b.time)} · ${Math.round(b.size / 1024)} KB</div></div><button class="btn sm" data-rollback="${esc(b.name)}">Diesen Stand wiederherstellen</button></div>`).join('')}</div>` : ''}`;
+				<div class="list-item"><div class="li-main"><div class="li-title mono">${esc(b.name)}</div><div class="li-sub">${relTime(b.time)} · ${fmtBytes(b.size)}</div></div><button class="btn sm" data-rollback="${esc(b.name)}">Diesen Stand wiederherstellen</button></div>`).join('')}</div>` : ''}`;
 		$('[data-check]', box).onclick = () => { box.innerHTML = '<div class="muted">Suche nach Updates …</div>'; updatePanel(true); };
 		$('[data-install]', box)?.addEventListener('click', async (e) => {
 			if (!await confirmDialog('Update installieren?', `Version ${esc(u.current)} wird durch ${esc(u.latest)} ersetzt. Vorher werden Programm und Datenbank gesichert.`, 'Installieren')) return;

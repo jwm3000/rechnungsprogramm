@@ -100,6 +100,7 @@ Das PDF entsteht direkt in PHP, ohne Bibliothek:
 - **Kleinunternehmergrenze** im Blick (55.000 €)
 - Ausgaben mit Belegfoto vom Handy
 - Export als CSV oder alle Rechnungen als PDF in einer ZIP-Datei
+- **Speicherplatz** unter *Einstellungen → Daten*: Datenbank, Belege und Sicherungen, Größe je Bereich, Zustandsprüfung und „Datenbank optimieren“
 
 **Design & Bedienung**
 - **Sieben Designs** mit Mini-Vorschau: Schlicht, Modern und Farbakzente – auf Wunsch auch auf Rechnungen
@@ -112,7 +113,7 @@ Das PDF entsteht direkt in PHP, ohne Bibliothek:
 
 - **Ersteinrichtung nur mit Code** aus `data/SETUP-CODE.txt` – niemand kann eine frische Installation übernehmen
 - Passwort-Hash (bcrypt), Sperre nach 8 Fehlversuchen je IP bzw. 40 insgesamt in 15 Minuten
-- Sitzungs-Cookie `HttpOnly`, `SameSite=Strict`, über HTTPS `Secure`; CSRF-Token auf jeder Änderung
+- Sitzungs-Cookie `HttpOnly`, `SameSite=Strict`, über HTTPS `Secure`; Änderungen nur per POST mit CSRF-Token
 - Strenge **Content-Security-Policy** (keine fremden oder eingebetteten Skripte), Ausgaben durchgehend maskiert
 - SQL nur mit vorbereiteten Abfragen; Uploads nach Inhalt geprüft; Logos werden bereinigt (nur Formen)
 - **SMTP-Passwort verschlüsselt** (AES-256-GCM), Schlüssel getrennt von der Datenbank; Versand nur über TLS mit Zertifikatsprüfung
