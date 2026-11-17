@@ -374,6 +374,45 @@ function nw_logo_raster_file() {
 	return '';
 }
 
+/* ==================================================================== Logo für E-Mails */
+
+function nw_mail_logo_file() {
+	return nw_data_dir() . '/logo-mail.png';
+}
+
+/**
+ * Logo für HTML-Mails: das im Browser erzeugte PNG (SVG zeigen Gmail und Outlook nicht an)
+ * oder ein hochgeladenes PNG/JPG bis 400 KB. Sonst null.
+ *
+ * @return array{type:string, ext:string, data:string, w:int, h:int}|null
+ */
+function nw_mail_logo() {
+	$f = nw_mail_logo_file();
+	if ( ! is_file( $f ) ) {
+		$f = nw_logo_raster_file();
+		if ( '' === $f || filesize( $f ) > 400 * 1024 ) {
+			return null;
+		}
+	}
+	$data = (string) file_get_contents( $f );
+	$size = @getimagesizefromstring( $data );
+	if ( ! $size || ! in_array( $size[2], array( IMAGETYPE_PNG, IMAGETYPE_JPEG ), true ) ) {
+		return null;
+	}
+	$png = IMAGETYPE_PNG === $size[2];
+	return array( 'type' => $png ? 'image/png' : 'image/jpeg', 'ext' => $png ? 'png' : 'jpg', 'data' => $data, 'w' => (int) $size[0], 'h' => (int) $size[1] );
+}
+
+/** PNG des Logos für E-Mails speichern (erzeugt der Browser aus dem Logo). */
+function nw_mail_logo_save( $bin ) {
+	$size = strlen( $bin ) <= 400 * 1024 ? @getimagesizefromstring( $bin ) : false;
+	if ( "\x89PNG" !== substr( $bin, 0, 4 ) || ! $size || IMAGETYPE_PNG !== $size[2] || $size[0] > 1600 || $size[1] > 800 ) {
+		throw new RuntimeException( 'Das Logo für E-Mails muss ein PNG bis 400 KB und 1600 × 800 Pixel sein.' );
+	}
+	nw_png_to_pdf( $bin ); // prüft, ob sich das Bild wirklich lesen lässt
+	file_put_contents( nw_mail_logo_file(), $bin );
+}
+
 /** Logo für die Oberfläche: bereinigtes SVG oder <img> mit eingebettetem PNG/JPG. */
 function nw_logo_html() {
 	$svg = nw_logo_svg();
@@ -595,7 +634,7 @@ function nw_logo_save( $bin ) {
 }
 
 function nw_logo_delete() {
-	foreach ( array( 'logo.svg', 'logo.png', 'logo.jpg', 'logo.cache.json', 'logo.pdfimg' ) as $f ) {
+	foreach ( array( 'logo.svg', 'logo.png', 'logo.jpg', 'logo.cache.json', 'logo.pdfimg', 'logo-mail.png' ) as $f ) {
 		@unlink( nw_data_dir() . '/' . $f );
 	}
 	nw_logo( true );

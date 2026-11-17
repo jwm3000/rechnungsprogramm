@@ -122,7 +122,20 @@ class NW_SMTP {
 		$body .= 'Content-Type: multipart/alternative; boundary="' . $alt . "\"\r\n\r\n";
 		$body .= '--' . $alt . "\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
 		$body .= chunk_split( base64_encode( $m['text'] ) );
-		if ( ! empty( $m['html'] ) ) {
+		if ( ! empty( $m['html'] ) && ! empty( $m['inline'] ) ) {
+			// HTML mit eingebetteten Bildern (cid:) – werden mitgeschickt, nicht aus dem Netz geladen
+			$rel   = 'rel_' . bin2hex( random_bytes( 8 ) );
+			$body .= '--' . $alt . "\r\nContent-Type: multipart/related; boundary=\"" . $rel . "\"\r\n\r\n";
+			$body .= '--' . $rel . "\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
+			$body .= chunk_split( base64_encode( $m['html'] ) );
+			foreach ( $m['inline'] as $i ) {
+				$name  = str_replace( '"', '', $i['name'] );
+				$body .= '--' . $rel . "\r\nContent-Type: " . $i['type'] . '; name="' . $name . "\"\r\nContent-Transfer-Encoding: base64\r\n";
+				$body .= 'Content-ID: <' . $i['cid'] . ">\r\nContent-Disposition: inline; filename=\"" . $name . "\"\r\n\r\n";
+				$body .= chunk_split( base64_encode( $i['data'] ) );
+			}
+			$body .= '--' . $rel . "--\r\n";
+		} elseif ( ! empty( $m['html'] ) ) {
 			$body .= '--' . $alt . "\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
 			$body .= chunk_split( base64_encode( $m['html'] ) );
 		}
@@ -329,7 +342,41 @@ function nw_mail_compose( array $inv, $type = 'invoice' ) {
 	);
 }
 
-function nw_mail_html( $text, array $inv ) {
+/** E-Mail-Vorlagen: Standard (HTML mit Firmenname), Schlicht (nur Text), Mit Logo (HTML mit eingebettetem Logo). */
+function nw_mail_templates() {
+	return array( 'standard' => 'Standard', 'text' => 'Schlicht', 'logo' => 'Mit Logo' );
+}
+
+function nw_mail_template() {
+	$t = nw_setting( 'mail_template' );
+	return isset( nw_mail_templates()[ $t ] ) ? $t : 'standard';
+}
+
+/**
+ * Mailtext → HTML-Teil und eingebettete Bilder je nach Vorlage.
+ * $preview: Logo als data:-URL statt cid (für die Vorschau in den Einstellungen).
+ *
+ * @return array{html:string, inline:array}
+ */
+function nw_mail_parts( $text, $tpl = null, $preview = false ) {
+	$tpl = $tpl ?? nw_mail_template();
+	if ( 'text' === $tpl ) {
+		return array( 'html' => '', 'inline' => array() );
+	}
+	$logo = 'logo' === $tpl ? nw_mail_logo() : null;
+	if ( ! $logo ) {
+		return array( 'html' => nw_mail_html( $text ), 'inline' => array() );
+	}
+	$cid = 'logo-' . bin2hex( random_bytes( 6 ) ) . '@rechnungen';
+	$src = $preview ? 'data:' . $logo['type'] . ';base64,' . base64_encode( $logo['data'] ) : 'cid:' . $cid;
+	return array(
+		'html'   => nw_mail_html( $text, $src, $logo['w'], $logo['h'] ),
+		'inline' => $preview ? array() : array( array( 'cid' => $cid, 'name' => 'logo.' . $logo['ext'], 'type' => $logo['type'], 'data' => $logo['data'] ) ),
+	);
+}
+
+/** HTML-Fassung: Karte mit Firmenname als Kopf – oder mit Logo, wenn $logo_src gesetzt ist. */
+function nw_mail_html( $text, $logo_src = '', $w = 0, $h = 0 ) {
 	$s      = nw_settings();
 	$accent = preg_match( '/^#[0-9a-f]{6}$/i', $s['accent'] ) ? $s['accent'] : '#16171a';
 	$paras  = '';
@@ -340,9 +387,22 @@ function nw_mail_html( $text, array $inv ) {
 	return '<!doctype html><html lang="de"><body style="margin:0;background:#f4f5f7;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#16171a">'
 		. '<div style="max-width:560px;margin:0 auto;padding:28px 16px">'
 		. '<div style="background:#fff;border-radius:10px;border-top:4px solid ' . $accent . ';padding:28px 28px 14px;font-size:15px;line-height:1.55">'
-		. '<div style="font-size:20px;letter-spacing:-.02em;margin-bottom:22px">[ ' . htmlspecialchars( mb_strtolower( $s['company'] ), ENT_QUOTES, 'UTF-8' ) . ' ]</div>'
+		. ( '' !== $logo_src
+			? '<div style="margin-bottom:24px">' . nw_mail_logo_img( $logo_src, $w, $h, $s['company'] ) . '</div>'
+			: '<div style="font-size:20px;letter-spacing:-.02em;margin-bottom:22px">[ ' . htmlspecialchars( mb_strtolower( $s['company'] ), ENT_QUOTES, 'UTF-8' ) . ' ]</div>' )
 		. $paras
 		. '</div><div style="font-size:12px;color:#6b6e76;text-align:center;padding:14px">' . $foot . '</div></div></body></html>';
+}
+
+/** Logo-Bild mit fester Größe (Outlook braucht width/height): höchstens 56 px hoch und 260 px breit. */
+function nw_mail_logo_img( $src, $w, $h, $alt ) {
+	$h2 = 56;
+	$w2 = $h ? (int) round( $w * $h2 / $h ) : 160;
+	if ( $w2 > 260 ) {
+		$h2 = (int) max( 1, round( $h2 * 260 / $w2 ) );
+		$w2 = 260;
+	}
+	return '<img src="' . htmlspecialchars( $src, ENT_QUOTES, 'UTF-8' ) . '" width="' . $w2 . '" height="' . $h2 . '" alt="' . htmlspecialchars( (string) $alt, ENT_QUOTES, 'UTF-8' ) . '" style="display:block;border:0;width:' . $w2 . 'px;height:' . $h2 . 'px">';
 }
 
 /**
@@ -366,6 +426,7 @@ function nw_mail_invoice( $id, $type = 'invoice', array $o = array() ) {
 	$subject = trim( (string) ( $o['subject'] ?? '' ) ) ?: $mail['subject'];
 	$body    = trim( (string) ( $o['body'] ?? '' ) ) ?: $mail['body'];
 	$from    = $cfg['from'] ?: $cfg['user'];
+	$parts   = nw_mail_parts( $body );
 	$res     = nw_mail_send(
 		$cfg,
 		array(
@@ -377,7 +438,8 @@ function nw_mail_invoice( $id, $type = 'invoice', array $o = array() ) {
 			'bcc'         => nw_emails( $cfg['bcc'] ),
 			'subject'     => $subject,
 			'text'        => $body,
-			'html'        => nw_mail_html( $body, $inv ),
+			'html'        => $parts['html'],
+			'inline'      => $parts['inline'],
 			'attachments' => array( array( 'name' => NW_Document::filename( $inv ), 'type' => 'application/pdf', 'data' => NW_Document::render( $inv ) ) ),
 		),
 		array( 'invoice_id' => $inv['id'], 'number' => $inv['number'], 'kind' => 'offer' === $inv['kind'] ? 'offer' : $type )

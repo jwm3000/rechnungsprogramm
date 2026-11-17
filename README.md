@@ -65,6 +65,7 @@ Das PDF entsteht direkt in PHP, ohne Bibliothek:
 - **Zahlungseingang abhaken** direkt in der Liste – mit „Rückgängig“
 - **Teilzahlungen**: weniger als offen → „teilweise bezahlt“, mehrere Zahlungen je Rechnung
 - Per E-Mail senden (PDF im Anhang), Zahlungserinnerung, Teilen am Handy, Kopieren
+- **Drei E-Mail-Vorlagen** mit Vorschau: Standard, Schlicht (nur Text) oder Mit Logo (Logo eingebettet, kein Nachladen – auch SVG-Logos erscheinen in Gmail und Outlook)
 - **Löschen**: War es die zuletzt vergebene Nummer, wird sie wieder frei – sonst wird weitergezählt
 
 **Angebote**

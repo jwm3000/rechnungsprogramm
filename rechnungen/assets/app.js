@@ -1067,7 +1067,7 @@
 				<label class="field c6"><span>Kopie (CC)</span><input type="text" name="cc" value="${esc(pre.cc || '')}"></label>
 				<label class="field c6"><span>Betreff</span><input type="text" name="subject" value="${esc(pre.subject)}"></label>
 				<label class="field c6"><span>Nachricht</span><textarea name="body" rows="11">${esc(pre.body)}</textarea></label>
-				<div class="c6 hint">${icon('paperclip')} Anhang: <b>${esc(pre.filename)}</b>${S.mail.reply_to ? ` · Antworten an ${esc(S.mail.reply_to)}` : ''}${S.mail.bcc ? ` · Kopie an ${esc(S.mail.bcc)}` : ''}</div>
+				<div class="c6 hint">${icon('paperclip')} Anhang: <b>${esc(pre.filename)}</b> · Vorlage <a href="#/einstellungen/mail" data-close>${MAIL_TPL[S.mail.template]?.[0] || 'Standard'}</a>${S.mail.reply_to ? ` · Antworten an ${esc(S.mail.reply_to)}` : ''}${S.mail.bcc ? ` · Kopie an ${esc(S.mail.bcc)}` : ''}</div>
 			</div>`,
 			`<button class="btn" data-mailto>${icon('mail')} Im Mailprogramm öffnen</button><span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-send ${pre.configured ? '' : 'disabled'}>${icon('send')} Senden</button>`);
 		const val = (n) => $(`[name=${n}]`, el).value;
@@ -1345,7 +1345,8 @@
 			if (i.closest('#items') || i.closest('#svc')) return;
 			i.addEventListener('input', () => { ed[i.name] = i.value; touch(); });
 		});
-		$('#lines').oninput = (e) => { ed.recipient.lines = e.target.value.split('\n').map((s) => s.trim()).filter(Boolean); touch(); };
+		// Eigene Anschrift gilt – nicht mehr aus den Kundendaten nachladen (sonst ersetzt der Server die Änderung)
+		$('#lines').oninput = (e) => { ed.recipient.lines = e.target.value.split('\n').map((s) => s.trim()).filter(Boolean); ed.refresh_recipient = false; touch(); };
 
 		const setCustomer = (c, skipHours) => {
 			ed.customer_id = +c.id;
@@ -2291,6 +2292,10 @@
 					<div class="btns" style="flex-wrap:nowrap;flex:1;min-width:260px;max-width:460px"><input type="email" id="testto" value="${esc(s.email)}" aria-label="Testmail an"><button type="button" class="btn" data-test>${icon('send')} Testmail</button></div>
 					<div class="btns">${S.mail.has_pass ? `<button type="button" class="btn ghost danger" data-smtpclear>Passwort löschen</button>` : ''}<button type="button" class="btn primary" data-smtpsave>Speichern</button></div>
 				</div>`}
+				<h3 style="margin:26px 0 4px">Vorlage für E-Mails</h3>
+				<p class="muted" style="font-size:13.5px;margin-bottom:12px">Gilt für Rechnungen, Angebote, Zahlungserinnerungen und Dauerrechnungen. Die Rechnung hängt immer als PDF an, den Text stellst du unter <a href="#/einstellungen/texte">Rechnungstexte</a> ein.</p>
+				<div class="mtpl" id="mtpl" role="radiogroup" aria-label="Vorlage für E-Mails"></div>
+				<div class="mtpl-preview"><div class="mtpl-bar">${icon('eye')}<span>Vorschau mit deiner letzten Rechnung</span></div><div id="mtplview"></div></div>
 				<h3 style="margin:26px 0 8px">Automatik für Dauerrechnungen (Cronjob)</h3>
 				<p class="muted" style="margin-bottom:10px">Beim Webhoster einen täglichen Cronjob anlegen (z. B. 7:00 Uhr). Er erstellt fällige Dauerrechnungen und verschickt sie.</p>
 				<div class="hint" style="display:flex;flex-direction:column;gap:8px"><div>Als Befehl: <code>php ${esc('/pfad/zu/rechnungen/cron.php')}</code></div><div>oder als URL: <code id="cronurl">${esc(base + S.cron_url)}</code> <button class="btn sm" data-copy>${icon('copy')} Kopieren</button></div>
@@ -2336,11 +2341,16 @@
 		$('#logofile', main)?.addEventListener('change', async (e) => {
 			const fd = new FormData();
 			fd.append('logo', e.target.files[0]);
-			try { const r = await api('logo_upload', fd); $('#logo-svg').textContent = r.logo; toast('Logo gespeichert'); renderShell(); route(); } catch (er) { fail(er); }
+			try {
+				const r = await api('logo_upload', fd);
+				$('#logo-svg').textContent = r.logo;
+				S.mail.logo_ready = await makeMailLogo().catch(() => false);
+				toast('Logo gespeichert'); renderShell(); route();
+			} catch (er) { fail(er); }
 		});
 		$('[data-logodel]', main)?.addEventListener('click', async () => {
 			if (!await confirmDialog('Logo entfernen?', 'Auf Rechnungen steht dann der Firmenname.', 'Entfernen', { danger: true })) return;
-			try { await api('logo_delete', {}); $('#logo-svg').textContent = ''; renderShell(); route(); } catch (er) { fail(er); }
+			try { await api('logo_delete', {}); $('#logo-svg').textContent = ''; S.mail.logo_ready = false; renderShell(); route(); } catch (er) { fail(er); }
 		});
 		$('[data-save]', main)?.addEventListener('click', async () => {
 			const fd = Object.fromEntries(new FormData($('#sf')));
@@ -2391,6 +2401,7 @@
 		if (tab === 'update') updatePanel(false);
 		if (tab === 'protokoll') mailLogPanel();
 		if (tab === 'daten') storagePanel();
+		if (tab === 'mail') mailTemplatePanel();
 		if (tab === 'design') {
 			$$('[data-ui-pick]', main).forEach((b) => (b.onclick = async () => {
 				applyUi(b.dataset.uiPick);
@@ -2414,6 +2425,91 @@
 					: `<div class="note-ok">${icon('check')}<span>Datenordner ist von außen nicht erreichbar.</span></div>`;
 			});
 		}
+	}
+
+	/* ================================================================ E-Mail-Vorlagen */
+
+	const MAIL_TPL = {
+		standard: ['Standard', 'Text mit gestalteter Fassung und Firmenname im Kopf – wie bisher'],
+		text: ['Schlicht', 'Nur Text – kommt überall gleich an und landet am seltensten im Spam'],
+		logo: ['Mit Logo', 'Gestaltete Fassung mit deinem Logo – mitgeschickt, ohne Nachladen'],
+	};
+
+	/**
+	 * Logo als PNG für E-Mails erzeugen und hochladen. Gmail und Outlook zeigen kein SVG –
+	 * der Browser rastert es einmal in doppelter Auflösung (56 px Anzeigehöhe → 112 px).
+	 */
+	async function makeMailLogo() {
+		const raw = ($('#logo-svg')?.textContent || '').trim();
+		if (!raw) return false;
+		let src, tmp = '';
+		if (raw.startsWith('<svg')) {
+			const svg = new DOMParser().parseFromString(raw, 'image/svg+xml').documentElement;
+			const vb = (svg.getAttribute('viewBox') || '0 0 100 100').split(/[\s,]+/).map(Number);
+			svg.setAttribute('width', vb[2]); svg.setAttribute('height', vb[3]);
+			svg.querySelectorAll('[fill="currentColor"]').forEach((p) => p.setAttribute('fill', '#16171a'));
+			src = tmp = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' }));
+		} else {
+			src = (raw.match(/src="([^"]+)"/) || [])[1];
+			if (!src) return false;
+		}
+		try {
+			const img = new Image();
+			await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = src; });
+			let h = 112, w = Math.round((img.naturalWidth * h) / img.naturalHeight);
+			if (w > 520) { h = Math.max(1, Math.round((h * 520) / w)); w = 520; }
+			const c = document.createElement('canvas');
+			c.width = w; c.height = h;
+			c.getContext('2d').drawImage(img, 0, 0, w, h);
+			const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+			const fd = new FormData();
+			fd.append('png', blob, 'logo-mail.png');
+			await api('mail_logo_save', fd);
+			return true;
+		} finally { if (tmp) URL.revokeObjectURL(tmp); }
+	}
+
+	function mailTemplatePanel() {
+		const box = $('#mtpl');
+		if (!box) return;
+		const hasLogo = !!($('#logo-svg')?.textContent || '').trim();
+		const mini = {
+			standard: `<div class="mt-card"><i class="mt-accent"></i><b class="mt-name">[ ${esc((S.settings.company || 'firma').toLowerCase().slice(0, 14))} ]</b><span></span><span></span><span class="s"></span></div>`,
+			text: `<div class="mt-plain"><span></span><span></span><span class="s"></span><span></span><span class="s"></span></div>`,
+			logo: `<div class="mt-card"><i class="mt-accent"></i><div class="mt-logo">${hasLogo ? LOGO() : '<em>Logo</em>'}</div><span></span><span></span><span class="s"></span></div>`,
+		};
+		const draw = () => {
+			const cur = S.mail.template || 'standard';
+			box.innerHTML = Object.entries(MAIL_TPL).map(([k, [name, desc]]) => {
+				const off = k === 'logo' && !hasLogo;
+				return `<button type="button" role="radio" aria-checked="${cur === k}" class="mtpl-opt ${cur === k ? 'on' : ''}" data-tpl="${k}" ${off ? 'disabled' : ''}>
+					<div class="mtpl-mini mm-${k}">${mini[k]}</div>
+					<div class="mtpl-txt"><b>${name}</b><span>${off ? 'Zuerst unter <u>Firma</u> ein Logo hochladen' : desc}</span></div></button>`;
+			}).join('');
+			$$('[data-tpl]', box).forEach((b) => (b.onclick = () => choose(b.dataset.tpl)));
+		};
+		const preview = async () => {
+			const view = $('#mtplview');
+			if (!view) return;
+			let r;
+			try { r = await api('mail_template_preview', undefined, { query: { tpl: S.mail.template || 'standard' } }); } catch (e) { view.innerHTML = ''; return; }
+			if (!r.html) { view.innerHTML = `<pre class="mtpl-text">${esc(r.text)}</pre>`; return; }
+			view.innerHTML = `<iframe class="mtpl-frame" sandbox="allow-same-origin" title="Vorschau der E-Mail"></iframe>`;
+			const fr = $('iframe', view);
+			fr.onload = () => { try { fr.style.height = fr.contentDocument.documentElement.scrollHeight + 'px'; } catch (e) { /* Höhe bleibt */ } };
+			fr.srcdoc = r.html;
+		};
+		const choose = async (k) => {
+			if (k === S.mail.template) return;
+			try {
+				if (k === 'logo' && !S.mail.logo_ready) S.mail.logo_ready = await makeMailLogo();
+				await api('settings_save', { mail_template: k });
+				S.mail.template = S.settings.mail_template = k;
+				draw(); preview();
+				toast(`Vorlage „${MAIL_TPL[k][0]}“ gespeichert`);
+			} catch (e) { fail(e); }
+		};
+		draw(); preview();
 	}
 
 	/* ================================================================ Speicherplatz */

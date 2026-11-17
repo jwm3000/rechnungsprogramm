@@ -84,7 +84,7 @@ try {
 
 	/* ---------------------------------------------------------------- angemeldet */
 	// Lesen per GET, alles andere nur per POST (mit CSRF-Token, siehe oben)
-	$reads = array( 'bootstrap', 'dashboard', 'customer', 'invoices', 'invoice', 'mail_preview', 'pdf', 'original', 'hours', 'hours_open', 'recurring', 'expenses', 'expense_file', 'mail_log', 'storage', 'update_check', 'export', 'export_expenses', 'export_hours', 'export_pdfs', 'backup' );
+	$reads = array( 'bootstrap', 'dashboard', 'customer', 'invoices', 'invoice', 'mail_preview', 'pdf', 'original', 'hours', 'hours_open', 'recurring', 'expenses', 'expense_file', 'mail_log', 'mail_template_preview', 'storage', 'update_check', 'export', 'export_expenses', 'export_hours', 'export_pdfs', 'backup' );
 	if ( 'POST' !== $method && ! in_array( $a, $reads, true ) ) {
 		out( array( 'error' => 'Diese Aktion geht nur per POST.' ), 405 );
 	}
@@ -112,7 +112,7 @@ try {
 					'next_offer'      => nw_next_offer_number(),
 					'recurring'       => nw_recurring_list(),
 					'next_number'     => nw_next_number(),
-					'mail'            => array( 'configured' => nw_mail_configured(), 'from' => $smtp['from'] ?: $smtp['user'], 'host' => $smtp['host'], 'bcc' => $smtp['bcc'], 'reply_to' => nw_reply_to( $smtp, $smtp['from'] ?: $smtp['user'] ), 'source' => $smtp['source'], 'has_pass' => '' !== $smtp['pass'] ),
+					'mail'            => array( 'configured' => nw_mail_configured(), 'from' => $smtp['from'] ?: $smtp['user'], 'host' => $smtp['host'], 'bcc' => $smtp['bcc'], 'reply_to' => nw_reply_to( $smtp, $smtp['from'] ?: $smtp['user'] ), 'source' => $smtp['source'], 'has_pass' => '' !== $smtp['pass'], 'template' => nw_mail_template(), 'logo_ready' => (bool) nw_mail_logo() ),
 					'cron_url'        => 'cron.php?key=' . nw_cron_key(),
 					'today'           => nw_today(),
 					'version'         => NW_APP,
@@ -361,9 +361,27 @@ try {
 			if ( '' === trim( (string) $cfg['host'] ) ) {
 				out( array( 'error' => 'Bitte zuerst einen SMTP-Server eintragen.' ), 400 );
 			}
-			$r = nw_mail_send( $cfg, array( 'from' => $cfg['from'] ?: $cfg['user'], 'from_name' => $cfg['from_name'] ?: nw_setting( 'company' ), 'to' => $to, 'reply_to' => nw_reply_to( $cfg, $cfg['from'] ?: $cfg['user'] ), 'subject' => 'Testmail aus dem Rechnungsprogramm', 'text' => "Der E-Mail-Versand funktioniert.\n\n" . date( 'd.m.Y H:i' ) ), array( 'kind' => 'test' ) );
+			$text  = "Der E-Mail-Versand funktioniert.\n\nSo sehen deine Mails mit der Vorlage „" . nw_mail_templates()[ nw_mail_template() ] . "“ aus.\n\n" . date( 'd.m.Y H:i' );
+			$parts = nw_mail_parts( $text );
+			$r     = nw_mail_send( $cfg, array( 'from' => $cfg['from'] ?: $cfg['user'], 'from_name' => $cfg['from_name'] ?: nw_setting( 'company' ), 'to' => $to, 'reply_to' => nw_reply_to( $cfg, $cfg['from'] ?: $cfg['user'] ), 'subject' => 'Testmail aus dem Rechnungsprogramm', 'text' => $text, 'html' => $parts['html'], 'inline' => $parts['inline'] ), array( 'kind' => 'test' ) );
 			if ( ! $r['ok'] ) {
 				out( array( 'error' => $r['error'] ), 400 );
+			}
+			out( array( 'ok' => true ) );
+		case 'mail_template_preview':
+			// Beispieltext: die letzte ausgestellte Rechnung, sonst die Vorlage mit Platzhaltern
+			$tpl  = isset( nw_mail_templates()[ $_GET['tpl'] ?? '' ] ) ? $_GET['tpl'] : nw_mail_template();
+			$last = q_val( "SELECT id FROM invoices WHERE kind = 'invoice' AND status != 'draft' ORDER BY invoice_date DESC, id DESC LIMIT 1" );
+			$text = $last ? nw_mail_compose( nw_invoice_get( $last ) )['body'] : preg_replace( '/\{[A-Z_]+\}/', '…', nw_setting( 'mail_body' ) );
+			out( array( 'template' => $tpl, 'text' => $text, 'html' => nw_mail_parts( $text, $tpl, true )['html'], 'logo' => (bool) nw_mail_logo() ) );
+		case 'mail_logo_save':
+			if ( empty( $_FILES['png'] ) || UPLOAD_ERR_OK !== $_FILES['png']['error'] ) {
+				nw_fail( 'Kein Bild empfangen.' );
+			}
+			try {
+				nw_mail_logo_save( (string) file_get_contents( $_FILES['png']['tmp_name'] ) );
+			} catch ( RuntimeException $e ) {
+				nw_fail( $e->getMessage() );
 			}
 			out( array( 'ok' => true ) );
 		case 'storage':

@@ -185,6 +185,27 @@ eq( array( $log['to_addr'], $log['cc'], $log['bcc'], $log['number'], (int) $log[
 ok( false !== strpos( $log['attachment'], 'R.pdf' ) && '' !== $log['error'], 'Anhang und Fehlermeldung protokolliert' );
 eq( count( nw_mail_log( array( 'errors' => true ) )['rows'] ), 1, 'Filter „nur Fehler“' );
 
+section( 'E-Mail-Vorlagen' );
+eq( nw_mail_parts( 'Hallo', 'text' )['html'], '', 'Schlicht: nur Text, kein HTML' );
+ok( false !== strpos( nw_mail_parts( 'Hallo', 'standard' )['html'], '[ ' ), 'Standard: HTML mit Firmenname' );
+nw_logo_delete();
+eq( nw_mail_parts( 'Hallo', 'logo' )['inline'], array(), 'Mit Logo ohne Logo: fällt auf Standard zurück' );
+throws( function () { nw_mail_logo_save( '<svg xmlns="http://www.w3.org/2000/svg"/>' ); }, 'Logo für Mails: nur PNG' );
+nw_mail_logo_save( base64_decode( 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' ) );
+$mp = nw_mail_parts( "Hallo\n\nWelt", 'logo' );
+ok( 1 === count( $mp['inline'] ) && false !== strpos( $mp['html'], 'src="cid:' . $mp['inline'][0]['cid'] . '"' ), 'Mit Logo: Bild eingebettet und per cid verknüpft' );
+ok( false !== strpos( nw_mail_parts( 'Hallo', 'logo', true )['html'], 'src="data:image/png;base64,' ), 'Vorschau: Logo als data-URL' );
+$raw = NW_SMTP::build( array( 'from' => 'a@b.at', 'to' => array( 'c@d.at' ), 'subject' => 'T', 'text' => 't', 'html' => $mp['html'], 'inline' => $mp['inline'], 'attachments' => array( array( 'name' => 'R.pdf', 'type' => 'application/pdf', 'data' => 'x' ) ) ) );
+ok( false !== strpos( $raw, 'multipart/related' ) && false !== strpos( $raw, 'Content-ID: <' . $mp['inline'][0]['cid'] . '>' ) && false !== strpos( $raw, 'Content-Disposition: attachment; filename="R.pdf"' ), 'MIME: HTML + eingebettetes Logo + PDF-Anhang' );
+nw_logo_delete();
+ok( ! is_file( nw_mail_logo_file() ), 'Logo entfernen löscht auch das Mail-Logo' );
+
+section( 'Anschrift' );
+$an = nw_invoice_save( array( 'customer_id' => $c['id'], 'recipient' => array( 'lines' => array( 'Eigene Firma', 'z. H. Obmann', 'Gasse 1' ) ), 'refresh_recipient' => false, 'items' => array( array( 'name' => 'A', 'qty' => 1, 'price' => 1 ) ) ) );
+eq( $an['recipient']['lines'], array( 'Eigene Firma', 'z. H. Obmann', 'Gasse 1' ), 'geänderte Anschrift bleibt erhalten' );
+$an = nw_invoice_save( array( 'id' => $an['id'], 'customer_id' => $c['id'], 'recipient' => $an['recipient'], 'refresh_recipient' => true, 'items' => $an['items'] ) );
+ok( 'Eigene Firma' !== $an['recipient']['lines'][0], 'neu vom Kunden übernehmen ersetzt sie' );
+
 section( 'Speicherplatz' );
 $st = nw_storage_info();
 ok( $st['db']['bytes'] > 0 && $st['total'] >= $st['db']['bytes'], 'Datenbankgröße ermittelt' );

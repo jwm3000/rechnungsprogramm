@@ -68,6 +68,10 @@ contains "$R" "nicht gefunden" "unbekannte Rechnung sauber gemeldet"
 check "$(code -X POST -b "$JAR" -H 'Content-Type: application/json' -d '{}' "$BASE/api.php?a=logout")" 403 "Abmelden ohne CSRF abgelehnt"
 check "$(code -b "$JAR" "$BASE/api.php?a=invoice_delete&id=$IID")" 405 "Löschen per Link-Aufruf (GET) abgelehnt"
 check "$(code -b "$JAR" "$BASE/api.php?a=db_optimize")" 405 "Optimieren per GET abgelehnt"
+check "$(code -b "$JAR" "$BASE/api.php?a=mail_logo_save")" 405 "Mail-Logo per GET abgelehnt"
+F=$(mktemp --suffix=.png); echo '<?php echo 1;' >"$F"
+R=$(curl -s -b "$JAR" -H "X-CSRF: $CSRF" -F "png=@$F" -w '\n%{http_code}' "$BASE/api.php?a=mail_logo_save"); rm -f "$F"
+check "$(tail -1 <<<"$R")" 400 "Mail-Logo: Nicht-PNG abgelehnt"
 S=$(curl -s -b "$JAR" "$BASE/api.php?a=storage")
 contains "$S" '"ok":true' "Speicherplatz und Datenbank-Prüfung abrufbar"
 
@@ -78,6 +82,7 @@ check "$(code "$BASE/api.php?a=pdf&id=$IID")" 401 "PDF ohne Anmeldung gesperrt"
 check "$(code "$BASE/api.php?a=mail_log")" 401 "E-Mail-Protokoll ohne Anmeldung gesperrt"
 check "$(code "$BASE/api.php?a=hours")" 401 "Stunden ohne Anmeldung gesperrt"
 check "$(code "$BASE/api.php?a=storage")" 401 "Speicherplatz ohne Anmeldung gesperrt"
+check "$(code "$BASE/api.php?a=mail_template_preview")" 401 "Mail-Vorschau ohne Anmeldung gesperrt"
 
 echo "· Schutz gegen Passwort-Raten"
 J2="$(mktemp)"

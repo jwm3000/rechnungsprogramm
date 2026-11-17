@@ -329,6 +329,7 @@ function nw_settings_defaults() {
 		'smtp_bcc'           => '',
 		'smtp_reply_to'      => '',
 		'pay_box'            => 'qr',
+		'mail_template'      => 'standard',
 		'mail_subject'       => 'Rechnung {NUMMER} – {FIRMA}',
 		'mail_body'          => "{ANREDE}\n\nim Anhang finden Sie die Rechnung {NUMMER} vom {DATUM} über {BETRAG}.\n{ZAHLUNG}\n\nVielen Dank für die gute Zusammenarbeit!\n\nMit freundlichen Grüßen\n{INHABER}",
 		'remind_subject'     => 'Zahlungserinnerung zu Rechnung {NUMMER}',
