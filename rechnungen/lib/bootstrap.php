@@ -273,6 +273,15 @@ function nw_migrate( PDO $pdo ) {
 			PRAGMA user_version = 5;"
 		);
 	}
+	if ( $v < 6 ) {
+		// Eigener E-Mail-Text je Dauerrechnung
+		$pdo->exec(
+			"ALTER TABLE recurring ADD COLUMN mail_custom INTEGER DEFAULT 0;
+			ALTER TABLE recurring ADD COLUMN mail_subject TEXT DEFAULT '';
+			ALTER TABLE recurring ADD COLUMN mail_body TEXT DEFAULT '';
+			PRAGMA user_version = 6;"
+		);
+	}
 }
 
 /* ==================================================================== Einstellungen */

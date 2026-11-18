@@ -1031,8 +1031,14 @@ function nw_recurring_save( array $d ) {
 		'intro'           => (string) ( $d['intro'] ?? '' ),
 		'note'            => (string) ( $d['note'] ?? '' ),
 		'active'          => empty( $d['active'] ) ? 0 : 1,
+		'mail_custom'     => empty( $d['mail_custom'] ) ? 0 : 1,
+		'mail_subject'    => mb_substr( trim( (string) ( $d['mail_subject'] ?? '' ) ), 0, 200 ),
+		'mail_body'       => mb_substr( trim( (string) ( $d['mail_body'] ?? '' ) ), 0, 10000 ),
 		'updated_at'      => nw_now(),
 	);
+	if ( $row['mail_custom'] && '' === $row['mail_body'] ) {
+		nw_fail( 'Bitte einen E-Mail-Text eingeben – oder „Eigener E-Mail-Text“ ausschalten.' );
+	}
 	if ( $id ) {
 		nw_update( 'recurring', $id, $row );
 	} else {
@@ -1066,34 +1072,93 @@ function nw_recurring_vars( $from, $to ) {
  *
  * @return array{invoice:array, mail:?array, note:string}
  */
+/**
+ * Daten der nächsten Rechnung einer Dauerrechnung: Zeitraum ab next_date, Platzhalter aufgelöst.
+ * Gemeinsam für „Jetzt erstellen“, den Cronjob und die Vorschau.
+ */
+function nw_recurring_invoice_data( array $r, array $c, $invoice_date ) {
+	$from  = $r['next_date'];
+	$to    = nw_add_days( nw_add_months( $from, (int) $r['interval_months'] ), -1 );
+	$vars  = nw_recurring_vars( $from, $to );
+	$items = array_map(
+		function ( $it ) use ( $vars ) {
+			$it['name']        = strtr( (string) ( $it['name'] ?? '' ), $vars );
+			$it['description'] = strtr( (string) ( $it['description'] ?? '' ), $vars );
+			return $it;
+		},
+		(array) $r['items']
+	);
+	$data = array(
+		'customer_id'  => $c['id'],
+		'invoice_date' => $invoice_date,
+		'period_from'  => $from,
+		'period_to'    => $to,
+		'items'        => $items,
+		'recurring_id' => $r['id'] ?: null,
+		'note'         => 'Aus Dauerrechnung „' . ( $r['title'] ?: $c['name'] ) . '“',
+	);
+	if ( '' !== trim( (string) $r['intro'] ) ) {
+		$data['intro'] = $r['intro'];
+	}
+	return $data;
+}
+
+/**
+ * PDF-Vorschau der nächsten Rechnung – auch aus ungespeicherten Formularwerten.
+ * Rechnungsdatum = Fälligkeitstag (an dem sie entsteht), bei überfälligen heute.
+ */
+function nw_recurring_preview( array $d ) {
+	if ( empty( $d['customer_id'] ) ) {
+		nw_fail( 'Bitte zuerst einen Kunden wählen.' );
+	}
+	$c    = nw_customer_get( (int) $d['customer_id'] );
+	$next = preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) ( $d['next_date'] ?? '' ) ) ? $d['next_date'] : nw_today();
+	$r    = array(
+		'id'              => (int) ( $d['id'] ?? 0 ),
+		'title'           => trim( (string) ( $d['title'] ?? '' ) ),
+		'interval_months' => max( 1, (int) ( $d['interval_months'] ?? 12 ) ),
+		'next_date'       => $next,
+		'items'           => is_array( $d['items'] ?? null ) ? $d['items'] : array(),
+		'intro'           => (string) ( $d['intro'] ?? '' ),
+	);
+	$inv                  = nw_invoice_preview( nw_recurring_invoice_data( $r, $c, max( $next, nw_today() ) ) );
+	$inv['preview_label'] = 'VORSCHAU – Dauerrechnung am ' . nw_date( max( $next, nw_today() ) );
+	return $inv;
+}
+
+/** E-Mail der nächsten Rechnung, wie sie verschickt würde – aus den (auch ungespeicherten) Formularwerten. */
+function nw_recurring_mail_preview( array $d ) {
+	$inv           = nw_recurring_preview( $d );
+	$inv['number'] = nw_next_number(); // voraussichtliche Nummer
+	$custom        = ! empty( $d['mail_custom'] ) ? array( 'subject' => (string) ( $d['mail_subject'] ?? '' ), 'body' => (string) ( $d['mail_body'] ?? '' ) ) : false;
+	$m             = nw_mail_compose( $inv, 'invoice', $custom );
+	$c             = nw_customer_get( (int) $d['customer_id'] );
+	$cfg           = nw_smtp_config();
+	$from          = $cfg['from'] ?: $cfg['user'];
+	$to            = trim( (string) ( $d['email'] ?? '' ) ) ?: (string) $c['email'];
+	return array(
+		'subject'    => $m['subject'],
+		'text'       => $m['body'],
+		'html'       => nw_mail_parts( $m['body'], null, true )['html'],
+		'template'   => nw_mail_template(),
+		'custom'     => (bool) $custom,
+		'number'     => $inv['number'],
+		'to'         => implode( ', ', nw_emails( $to ) ),
+		'cc'         => implode( ', ', nw_emails( (string) ( $c['email_cc'] ?? '' ) ) ),
+		'bcc'        => implode( ', ', nw_emails( (string) $cfg['bcc'] ) ),
+		'from'       => $from ? ( ( $cfg['from_name'] ?: nw_setting( 'company' ) ) . ' <' . $from . '>' ) : '',
+		'reply_to'   => $from ? nw_reply_to( $cfg, $from ) : '',
+		'filename'   => NW_Document::filename( array( 'status' => 'issued' ) + $inv ), // so heißt der Anhang beim Versand
+		'configured' => nw_mail_configured(),
+	);
+}
+
 function nw_recurring_run( $id, $mode = null ) {
 	$r    = nw_recurring_get( $id );
 	$c    = nw_customer_get( $r['customer_id'] );
 	$mode = $mode ? $mode : $r['mode'];
 	$from = $r['next_date'];
-	$to   = nw_add_days( nw_add_months( $from, (int) $r['interval_months'] ), -1 );
-	$vars = nw_recurring_vars( $from, $to );
-	$items = array_map(
-		function ( $it ) use ( $vars ) {
-			$it['name']        = strtr( (string) $it['name'], $vars );
-			$it['description'] = strtr( (string) $it['description'], $vars );
-			return $it;
-		},
-		$r['items']
-	);
-	$data = array(
-		'customer_id'  => $c['id'],
-		'invoice_date' => nw_today(),
-		'period_from'  => $from,
-		'period_to'    => $to,
-		'items'        => $items,
-		'recurring_id' => $r['id'],
-		'note'         => 'Aus Dauerrechnung „' . ( $r['title'] ?: $c['name'] ) . '“',
-	);
-	if ( '' !== trim( $r['intro'] ) ) {
-		$data['intro'] = $r['intro'];
-	}
-	$inv  = nw_invoice_save( $data );
+	$inv  = nw_invoice_save( nw_recurring_invoice_data( $r, $c, nw_today() ) );
 	$note = '';
 	$mail = null;
 	if ( 'draft' !== $mode ) {

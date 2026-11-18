@@ -197,6 +197,23 @@ eq( array( $rd['recurring_next'], nw_recurring_get( $rr['id'] )['next_date'] ), 
 nw_recurring_delete( $rr['id'] );
 eq( (int) q_val( 'SELECT COUNT(*) FROM recurring WHERE id = ?', array( $rr['id'] ) ), 0, 'Dauerrechnung mit erstellten Rechnungen löschbar' );
 
+section( 'Dauerrechnung: Vorschau & eigener E-Mail-Text' );
+$rbase = array( 'customer_id' => $c['id'], 'items' => array( array( 'name' => 'Hosting {MONAT}', 'qty' => 1, 'price' => 20 ) ), 'interval_months' => 1, 'next_date' => '2027-03-01', 'mode' => 'send', 'active' => 1 );
+$pv    = nw_recurring_preview( $rbase );
+eq( array( $pv['items'][0]['name'], $pv['period_from'], $pv['period_to'], $pv['invoice_date'] ), array( 'Hosting März 2027', '2027-03-01', '2027-03-31', '2027-03-01' ), 'PDF-Vorschau: Platzhalter, Zeitraum und Datum der nächsten Rechnung' );
+ok( 'VORSCHAU – Dauerrechnung am 01.03.2027' === $pv['preview_label'] && '%PDF' === substr( NW_Document::render( $pv ), 0, 4 ), 'PDF-Vorschau wird erzeugt und als Vorschau beschriftet' );
+throws( function () use ( $rbase ) { nw_recurring_save( $rbase + array( 'mail_custom' => 1, 'mail_body' => '' ) ); }, 'eigener Text eingeschaltet, aber leer → abgelehnt' );
+$rc = nw_recurring_save( $rbase + array( 'mail_custom' => 1, 'mail_subject' => 'Hosting {MONAT} – {NUMMER}', 'mail_body' => "Hallo,\nanbei Hosting für {MONAT} über {BETRAG}." ) );
+$mp = nw_recurring_mail_preview( $rc );
+ok( $mp['custom'] && 'Hosting März 2027 – ' . nw_next_number() === $mp['subject'] && false !== strpos( $mp['text'], 'Hosting für März 2027 über' ), 'E-Mail-Vorschau mit eigenem Text, Platzhaltern und voraussichtlicher Nummer' );
+$mp = nw_recurring_mail_preview( array( 'mail_custom' => 0 ) + $rc );
+ok( ! $mp['custom'] && false !== strpos( $mp['text'], 'im Anhang finden Sie' ), 'ausgeschaltet: Standardtext' );
+$ri = nw_recurring_run( $rc['id'], 'issue' )['invoice'];
+eq( nw_mail_compose( $ri )['subject'], 'Hosting März 2027 – ' . $ri['number'], 'erstellte Rechnung verschickt den eigenen Text' );
+ok( false !== strpos( nw_mail_compose( $ri, 'reminder' )['body'], 'fällig' ), 'Zahlungserinnerung bleibt beim Standardtext' );
+nw_invoice_delete( $ri['id'] );
+nw_recurring_delete( $rc['id'] );
+
 section( 'E-Mail-Vorlagen' );
 eq( nw_mail_parts( 'Hallo', 'text' )['html'], '', 'Schlicht: nur Text, kein HTML' );
 ok( false !== strpos( nw_mail_parts( 'Hallo', 'standard' )['html'], '[ ' ), 'Standard: HTML mit Firmenname' );

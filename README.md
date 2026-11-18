@@ -80,6 +80,8 @@ Das PDF entsteht direkt in PHP, ohne Bibliothek:
 - täglicher Cronjob erstellt und versendet fällige Rechnungen
 - **E-Mail-Protokoll** in den Einstellungen: jede Mail mit Zeit, Absender, Empfängern (auch CC/BCC), Betreff, Beleg, Anhang, Antwort des Servers oder Fehler
 - wiederkehrende Rechnungen sind in allen Listen mit einem Symbol gekennzeichnet
+- **Vorschau der nächsten Rechnung** als PDF und **Vorschau der E-Mail** dazu – auch mit ungespeicherten Änderungen
+- **Eigener E-Mail-Text** je Dauerrechnung (mit Platzhaltern wie `{MONAT}`, `{ZEITRAUM}`, `{BETRAG}`) statt des Standardtexts
 
 **Stunden**
 - Zeit für Kunden und Projekte mitschreiben: Dauer als `1,5`, `1:30` oder `90m`, Schnellknöpfe und **Stoppuhr**

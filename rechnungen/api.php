@@ -225,6 +225,11 @@ try {
 		case 'recurring_run':
 			$mode = in_array( $in['mode'] ?? '', array( 'send', 'issue', 'draft' ), true ) ? $in['mode'] : null;
 			out( nw_recurring_run( $id, $mode ) );
+		case 'recurring_preview':
+			$inv = nw_recurring_preview( $in );
+			send_file( NW_Document::render( $inv ), 'Vorschau.pdf', 'application/pdf', false );
+		case 'recurring_mail_preview':
+			out( nw_recurring_mail_preview( $in ) );
 		case 'recurring_run_due':
 			out( array( 'done' => nw_recurring_run_due() ) );
 

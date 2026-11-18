@@ -2106,16 +2106,19 @@
 					${rs.map((r) => `<a class="ys-pill ${+r.active ? '' : 'off'}" href="#/dauerrechnungen?id=${r.id}" title="${esc(r.customer_name)} · ${money(r.gross)}">${esc(r.customer_name)}</a>`).join('')}
 					${sum ? `<div class="ys-sum">${moneyShort(sum)}</div>` : ''}</div>`; }).join('')}</div>
 			</div>
-			<div class="card"><div class="table-wrap"><table class="table resp"><thead><tr><th>Kunde</th><th class="hide-m">Rhythmus</th><th>Nächste</th><th class="hide-m">Versand</th><th class="th-r">Betrag</th><th class="th-r hide-m">Pro Jahr</th></tr></thead><tbody>
+			<div class="card"><div class="table-wrap"><table class="table resp"><thead><tr><th>Kunde</th><th class="hide-m">Rhythmus</th><th>Nächste</th><th class="hide-m">Versand</th><th class="th-r">Betrag</th><th class="th-r hide-m">Pro Jahr</th><th class="hide-m" style="width:84px"><span class="sr">Vorschau</span></th></tr></thead><tbody>
 				${list.map((r) => `<tr class="click" data-id="${r.id}" style="${+r.active ? '' : 'opacity:.55'}">
 					<td class="m-b m-wide strong">${esc(r.customer_name)}<div class="sub">${esc(r.title || '')}${r.items.length ? ' · ' + esc(r.items.map((i) => i.name).join(', ')) : ''}</div></td>
 					<td class="m-hide muted">${INTERVALS[r.interval_months]}</td>
 					<td class="m-c">${r.due ? '<span class="badge b-open">fällig</span>' : +r.active ? date(r.next_date) : '<span class="badge">pausiert</span>'}</td>
 					<td class="m-e">${r.email_missing && +r.active ? `<span class="badge b-warn">E-Mail fehlt</span>` : `<span class="badge plain">${r.mode === 'send' ? icon('send') : r.mode === 'draft' ? icon('edit') : icon('file')} ${MODE_LABEL[r.mode]}</span>`}</td>
 					<td class="m-d td-r num strong">${money(r.gross)}</td>
-					<td class="m-hide td-r num muted">${money(r.yearly)}</td></tr>`).join('') || '<tr><td><div class="empty">Noch keine Dauerrechnungen.</div></td></tr>'}</tbody></table></div></div>
+					<td class="m-hide td-r num muted">${money(r.yearly)}</td>
+					<td class="m-hide td-r nowrap"><button type="button" class="btn sm ghost icon" data-pv="${r.id}" title="Vorschau der nächsten Rechnung (PDF)" aria-label="Vorschau der nächsten Rechnung">${icon('eye')}</button><button type="button" class="btn sm ghost icon" data-mpv="${r.id}" title="Vorschau der E-Mail zur nächsten Rechnung" aria-label="Vorschau der E-Mail">${icon('mail')}</button></td></tr>`).join('') || '<tr><td><div class="empty">Noch keine Dauerrechnungen.</div></td></tr>'}</tbody></table></div></div>
 		</div>`;
-		$$('tr[data-id]', main).forEach((tr) => (tr.onclick = () => recurringDrawer(list.find((r) => +r.id === +tr.dataset.id), () => viewRecurring({}))));
+		$$('tr[data-id]', main).forEach((tr) => (tr.onclick = (e) => { if (e.target.closest('[data-pv], [data-mpv]')) return; recurringDrawer(list.find((r) => +r.id === +tr.dataset.id), () => viewRecurring({})); }));
+		$$('[data-pv]', main).forEach((b) => (b.onclick = () => recurringPreview(list.find((r) => +r.id === +b.dataset.pv))));
+		$$('[data-mpv]', main).forEach((b) => (b.onclick = () => recurringMailPreview(list.find((r) => +r.id === +b.dataset.mpv))));
 		$('[data-new]').onclick = () => recurringDrawer({}, () => viewRecurring({}));
 		$('[data-run-due]', main)?.addEventListener('click', runDue);
 		if (q.id) { const r = list.find((x) => +x.id === +q.id); if (r) recurringDrawer(r, () => viewRecurring({})); }
@@ -2136,6 +2139,12 @@
 				<div class="field c6"><span>Wenn fällig</span><div class="seg" id="mode">${Object.entries(MODE_LABEL).map(([k, l]) => `<button type="button" data-m="${k}" class="${rec.mode === k ? 'on' : ''}">${l}</button>`).join('')}</div>
 					<small id="modehint"></small></div>
 				<label class="field c6"><span>E-Mail-Empfänger <small>(leer = E-Mail des Kunden${cust?.email ? ': ' + esc(cust.email) : ''})</small></span><input type="text" name="email" value="${esc(rec.email)}" placeholder="${esc(cust?.email || 'kunde@example.com')}"></label>
+				<label class="switch c6"><input type="checkbox" name="mail_custom" ${+rec.mail_custom ? 'checked' : ''}> Eigener E-Mail-Text für diese Dauerrechnung <small class="muted">(statt des Standardtexts aus den Einstellungen)</small></label>
+				<div class="c6 mailcustom" id="mailcustom" ${+rec.mail_custom ? '' : 'hidden'}>
+					<label class="field"><span>Betreff <small>(leer = Standardbetreff)</small></span><input type="text" name="mail_subject" value="${esc(rec.mail_subject || '')}" placeholder="${esc(S.settings.mail_subject)}"></label>
+					<label class="field"><span>Text</span><textarea name="mail_body" rows="9">${esc(rec.mail_body || '')}</textarea></label>
+					<div class="hint">Platzhalter: <code>{ANREDE}</code> <code>{NUMMER}</code> <code>{DATUM}</code> <code>{BETRAG}</code> <code>{ZAHLUNG}</code> <code>{FAELLIG}</code> <code>{ZEITRAUM}</code> <code>{MONAT}</code> <code>{JAHR}</code> <code>{KUNDE}</code> <code>{FIRMA}</code> <code>{INHABER}</code> – gilt für den automatischen Versand und wenn du eine Rechnung daraus von Hand verschickst. Zahlungserinnerungen nutzen weiter den Standardtext.</div>
+				</div>
 			</div>
 			<div class="section-title">Positionen</div>
 			<div id="ritems"></div>
@@ -2147,7 +2156,7 @@
 			</div>
 			${!isNew && r.invoices?.length ? '' : ''}
 			${!isNew ? `<div class="hint" style="margin-top:16px">Leistungszeitraum auf der Rechnung: ab dem Fälligkeitsdatum für ${INTERVALS[rec.interval_months]}${rec.last_number ? ` · zuletzt Rechnung <b>${esc(rec.last_number)}</b>` : ''}.</div>` : ''}`,
-			`${isNew ? '' : `<button class="btn ghost danger" data-remove title="Löschen" aria-label="Löschen">${icon('trash')}<span class="hide-m">Löschen</span></button><button class="btn" data-run>${icon('play')} Jetzt erstellen</button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`,
+			`${isNew ? '' : `<button class="btn ghost danger" data-remove title="Löschen" aria-label="Löschen">${icon('trash')}<span class="hide-m">Löschen</span></button><button class="btn" data-run>${icon('play')} Jetzt erstellen</button>`}<button class="btn" data-preview title="PDF-Vorschau der nächsten Rechnung">${icon('eye')} Rechnung</button><button class="btn" data-mailpv title="Vorschau der E-Mail zur nächsten Rechnung">${icon('mail')} E-Mail</button><span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`,
 			{ wide: true });
 		const hint = () => {
 			$('#modehint', el).textContent = { send: 'Rechnung wird ausgestellt und mit PDF an den Kunden gemailt (Kopie an dich).', issue: 'Rechnung wird ausgestellt – versenden machst du selbst.', draft: 'Es entsteht ein Entwurf, den du prüfst, ergänzt und dann ausstellst.' }[rec.mode];
@@ -2165,6 +2174,17 @@
 			return saved;
 		};
 		$('[data-ok]', el).onclick = async () => { try { await save(); closeTop(); toast('Dauerrechnung gespeichert'); after?.(); } catch (e) { fail(e); } };
+		// Vorschauen mit den aktuellen (auch ungespeicherten) Formularwerten
+		const cur = () => ({ ...rec, id: rec.id || 0, items: rec.items.map((it) => ({ ...it, qty: num(it.qty), price: num(it.price), discount: num(it.discount) })) });
+		$('[data-preview]', el).onclick = () => recurringPreview(cur());
+		$('[data-mailpv]', el).onclick = () => recurringMailPreview(cur());
+		// Eigener E-Mail-Text: beim ersten Einschalten mit dem Standardtext vorbelegen
+		$('[name=mail_custom]', el).addEventListener('change', (e) => {
+			$('#mailcustom', el).hidden = !e.target.checked;
+			const body = $('[name=mail_body]', el);
+			if (e.target.checked && !body.value.trim()) { body.value = S.settings.mail_body || ''; rec.mail_body = body.value; }
+			if (e.target.checked) body.focus();
+		});
 		$('[data-remove]', el)?.addEventListener('click', async () => {
 			const who = rec.title || cust?.name || 'diese Dauerrechnung';
 			if (!await confirmDialog(`Dauerrechnung „${who}“ löschen?`, `Es werden <b>keine weiteren Rechnungen</b> mehr erstellt oder versendet – auch nicht automatisch.<br><br>Bereits erstellte Rechnungen${rec.last_number ? ` (zuletzt ${esc(rec.last_number)})` : ''} bleiben erhalten. Zum Pausieren statt Löschen einfach „Aktiv“ ausschalten.`, 'Dauerrechnung löschen', { danger: true })) return;
@@ -2183,6 +2203,57 @@
 				go('#/rechnung/' + out.invoice.id);
 			} catch (e) { fail(e); }
 		});
+	}
+
+	/** PDF-Vorschau der nächsten Rechnung einer Dauerrechnung als Popup (am Handy: PDF öffnen). */
+	async function recurringPreview(d) {
+		let blob;
+		try { blob = await api('recurring_preview', d, { blob: true }); } catch (e) { return fail(e); }
+		const url = URL.createObjectURL(blob);
+		const cust = customerById(d.customer_id);
+		const when = d.next_date && d.next_date > S.today ? d.next_date : S.today;
+		const mobile = matchMedia('(max-width: 860px)').matches;
+		openLayer(`
+			<div class="pv-head"><div class="grow"><h2>Nächste Rechnung${cust ? ' an ' + esc(cust.name) : ''}</h2>
+				<p>${d.next_date && d.next_date < S.today ? 'fällig – entsteht beim nächsten Lauf' : 'am ' + date(when)} · ${INTERVALS[d.interval_months] || ''}${d.title ? ' · ' + esc(d.title) : ''}</p></div>
+				<button type="button" class="btn ghost icon" data-close aria-label="Schließen">${icon('x')}</button></div>
+			${mobile ? `<div class="pv-mobile">${icon('file')}<p>Die Vorschau ist fertig.</p><a class="btn primary" href="${url}" target="_blank" rel="noopener">${icon('eye')} PDF öffnen</a></div>`
+				: `<iframe class="pv-frame" src="${url}#view=FitH&navpanes=0" title="Vorschau der nächsten Rechnung"></iframe>`}
+			<div class="drawer-foot"><span class="pv-note">${icon('eye')} Nur eine Vorschau – es wird nichts gespeichert oder versendet.</span><span class="grow"></span>
+				${mobile ? '' : `<a class="btn" href="${url}" target="_blank" rel="noopener">In neuem Tab</a>`}<button type="button" class="btn primary" data-close>Schließen</button></div>`,
+			'dialog pv-pop', { onClose: () => setTimeout(() => URL.revokeObjectURL(url), 60000) });
+	}
+
+	/** Vorschau der E-Mail zur nächsten Rechnung einer Dauerrechnung – so wie sie verschickt würde. */
+	async function recurringMailPreview(d) {
+		let m;
+		try { m = await api('recurring_mail_preview', d); } catch (e) { return fail(e); }
+		const notes = [
+			!m.configured ? ['warn', 'Der E-Mail-Versand ist noch nicht eingerichtet (Einstellungen → E-Mail & Automatik).'] : null,
+			!m.to ? ['warn', 'Keine E-Mail-Adresse – beim Kunden oder bei der Dauerrechnung eintragen.'] : null,
+			d.mode !== 'send' ? ['info', `Diese Dauerrechnung wird nicht automatisch versendet (Einstellung „${MODE_LABEL[d.mode] || d.mode}“) – so sähe die Mail aus, wenn du die Rechnung verschickst.`] : null,
+		].filter(Boolean);
+		const row = (k, v, cls = '') => (v ? `<dt>${k}</dt><dd class="${cls}">${v}</dd>` : '');
+		const el = openLayer(`
+			<div class="pv-head"><div class="grow"><h2>E-Mail zur nächsten Rechnung</h2>
+				<p>${m.custom ? 'Eigener Text dieser Dauerrechnung' : 'Standardtext aus den Einstellungen'} · Vorlage „${MAIL_TPL[m.template]?.[0] || 'Standard'}“ · voraussichtlich Rechnung ${esc(m.number)}</p></div>
+				<button type="button" class="btn ghost icon" data-close aria-label="Schließen">${icon('x')}</button></div>
+			<div class="mpv-scroll">
+				${notes.map(([t, x]) => `<div class="note-${t === 'warn' ? 'warn' : 'ok'} mpv-note">${icon(t === 'warn' ? 'alert' : 'mail')}<span>${x}</span></div>`).join('')}
+				<dl class="mpv-meta">
+					${row('Von', esc(m.from))}${row('An', esc(m.to) || '<span class="muted">—</span>')}${row('Kopie', esc(m.cc))}${row('Blindkopie', esc(m.bcc))}${row('Antwort an', esc(m.reply_to))}
+					${row('Betreff', `<b>${esc(m.subject)}</b>`)}${row('Anhang', `${icon('paperclip')} ${esc(m.filename)}`, 'mpv-att')}
+				</dl>
+				<div class="mpv-body">${m.html ? '<iframe class="mtpl-frame" sandbox="allow-same-origin" title="Vorschau der E-Mail"></iframe>' : `<pre class="mtpl-text">${esc(m.text)}</pre>`}</div>
+			</div>
+			<div class="drawer-foot"><span class="pv-note">${icon('eye')} Nur eine Vorschau – es wird nichts versendet.</span><span class="grow"></span>
+				<button type="button" class="btn" data-pdf>${icon('eye')} Rechnung (PDF)</button><button type="button" class="btn primary" data-close>Schließen</button></div>`, 'dialog pv-pop mpv-pop');
+		const fr = $('iframe', el);
+		if (fr) {
+			fr.onload = () => { try { fr.style.height = fr.contentDocument.documentElement.scrollHeight + 'px'; } catch (e) { /* Höhe bleibt */ } };
+			fr.srcdoc = m.html;
+		}
+		$('[data-pdf]', el).onclick = () => recurringPreview(d);
 	}
 
 	/* ================================================================ Ausgaben */

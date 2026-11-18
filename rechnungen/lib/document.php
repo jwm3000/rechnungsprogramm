@@ -118,7 +118,7 @@ class NW_Document {
 			}
 		}
 		$pdf->text( $R, 66, mb_strtoupper( $title ), $storno ? 20 : 24, true, $accent, 'right' );
-		$pdf->text( $R, 84, $draft ? 'ENTWURF – noch nicht ausgestellt' : 'Nr. ' . $inv['number'], 10, $draft, $draft ? '#b54708' : self::$muted, 'right' );
+		$pdf->text( $R, 84, $draft ? ( $inv['preview_label'] ?? 'ENTWURF – noch nicht ausgestellt' ) : 'Nr. ' . $inv['number'], 10, $draft, $draft ? '#b54708' : self::$muted, 'right' );
 
 		// ---------------------------------------------------------------- Absenderzeile + Empfänger (Fensterposition)
 		$top    = 150;

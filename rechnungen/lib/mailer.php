@@ -327,14 +327,31 @@ function nw_mail_vars( array $inv ) {
 		'{INHABER}' => $s['owner'],
 		'{KUNDE}'   => (string) ( $inv['recipient']['name'] ?? '' ),
 		'{GUELTIG}' => nw_date( $inv['valid_until'] ?? '' ),
+		'{MONAT}'   => ! empty( $inv['period_from'] ) ? nw_month_name( (int) substr( $inv['period_from'], 5, 2 ) ) . ' ' . substr( $inv['period_from'], 0, 4 ) : '',
+		'{JAHR}'    => substr( (string) ( ! empty( $inv['period_from'] ) ? $inv['period_from'] : $inv['invoice_date'] ), 0, 4 ),
 	);
 }
 
-function nw_mail_compose( array $inv, $type = 'invoice' ) {
+/**
+ * Betreff und Text einer Mail. Rechnungen aus einer Dauerrechnung mit eigenem E-Mail-Text nehmen diesen
+ * (Zahlungserinnerungen immer den Standard). $custom: null = aus der Dauerrechnung, false = Standard,
+ * array(subject, body) = vorgegeben (Vorschau ungespeicherter Werte).
+ */
+function nw_mail_compose( array $inv, $type = 'invoice', $custom = null ) {
 	$s = nw_settings();
 	$v = nw_mail_vars( $inv );
 	if ( 'offer' === $inv['kind'] ) {
 		return array( 'subject' => strtr( $s['offer_subject'], $v ), 'body' => strtr( $s['offer_body'], $v ) );
+	}
+	if ( null === $custom && 'reminder' !== $type && ! empty( $inv['recurring_id'] ) ) {
+		$rc     = q_row( 'SELECT mail_custom, mail_subject AS subject, mail_body AS body FROM recurring WHERE id = ?', array( (int) $inv['recurring_id'] ) );
+		$custom = $rc && $rc['mail_custom'] ? $rc : false;
+	}
+	if ( is_array( $custom ) && 'reminder' !== $type && '' !== trim( (string) $custom['body'] ) ) {
+		return array(
+			'subject' => strtr( '' !== trim( (string) $custom['subject'] ) ? $custom['subject'] : $s['mail_subject'], $v ),
+			'body'    => strtr( $custom['body'], $v ),
+		);
 	}
 	return array(
 		'subject' => strtr( 'reminder' === $type ? $s['remind_subject'] : $s['mail_subject'], $v ),
