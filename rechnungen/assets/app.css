@@ -394,6 +394,12 @@ a.list-item:hover .li-title { color: var(--accent); }
 .b-expired { background: var(--warn-soft); color: var(--warn); }
 .b-cancelled, .b-storno { background: var(--line-2); color: var(--muted); text-decoration: none; }
 .b-warn { background: var(--warn-soft); color: var(--warn); }
+/* Versandart der Dauerrechnungen */
+.b-mode-send { background: var(--ok-soft); color: var(--ok); }
+.b-mode-draft { background: var(--warn-soft); color: var(--warn); }
+.b-mode-issue { background: var(--line-2); color: var(--ink-2); }
+.b-missing { background: var(--bad-soft); color: var(--bad); }
+.badge svg { width: 13px; height: 13px; flex: none; }
 
 /* Wiederkehrend: rundes Symbol rechts neben dem Namen */
 .name-rec { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-width: 0; vertical-align: middle; }

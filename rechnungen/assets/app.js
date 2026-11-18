@@ -2113,7 +2113,9 @@
 					<td class="m-b m-wide strong">${esc(r.customer_name)}<div class="sub">${esc(r.title || '')}${r.items.length ? ' · ' + esc(r.items.map((i) => i.name).join(', ')) : ''}</div></td>
 					<td class="m-hide muted">${INTERVALS[r.interval_months]}</td>
 					<td class="m-c">${r.due ? '<span class="badge b-open">fällig</span>' : +r.active ? date(r.next_date) : '<span class="badge">pausiert</span>'}</td>
-					<td class="m-e">${r.email_missing && +r.active ? `<span class="badge b-warn">E-Mail fehlt</span>` : `<span class="badge plain">${r.mode === 'send' ? icon('send') : r.mode === 'draft' ? icon('edit') : icon('file')} ${MODE_LABEL[r.mode]}</span>`}</td>
+					<td class="m-e">${r.email_missing && +r.active
+						? `<span class="badge plain b-missing" title="Automatisch senden ist eingestellt, aber es gibt keine E-Mail-Adresse">${icon('alert')} E-Mail fehlt</span>`
+						: `<span class="badge plain b-mode-${r.mode}">${r.mode === 'send' ? icon('send') : r.mode === 'draft' ? icon('edit') : icon('file')} ${MODE_LABEL[r.mode]}</span>`}</td>
 					<td class="m-d td-r num strong">${money(r.gross)}</td>
 					<td class="m-hide td-r num muted">${money(r.yearly)}</td>
 					<td class="m-hide td-r nowrap"><button type="button" class="btn sm ghost icon" data-pv="${r.id}" title="Vorschau der nächsten Rechnung (PDF)" aria-label="Vorschau der nächsten Rechnung">${icon('eye')}</button><button type="button" class="btn sm ghost icon" data-mpv="${r.id}" title="Vorschau der E-Mail zur nächsten Rechnung" aria-label="Vorschau der E-Mail">${icon('mail')}</button></td></tr>`).join('') || '<tr><td><div class="empty">Noch keine Dauerrechnungen.</div></td></tr>'}</tbody></table></div></div>
