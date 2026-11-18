@@ -1443,7 +1443,11 @@
 		};
 		$('[data-delete]', main)?.addEventListener('click', async () => {
 			if (!await confirmDialog('Entwurf löschen?', 'Der Entwurf wird endgültig gelöscht.', 'Löschen', { danger: true })) return;
-			try { await api('invoice_delete', { id: ed.id }); view.dirty = false; await refresh(); go(isOffer ? '#/angebote' : '#/rechnungen'); toast('Entwurf gelöscht'); } catch (e) { fail(e); }
+			try {
+				const r = await api('invoice_delete', { id: ed.id });
+				view.dirty = false; await refresh(); go(isOffer ? '#/angebote' : '#/rechnungen');
+				toast('Entwurf gelöscht' + (r.recurring_next ? ` · Dauerrechnung wieder fällig am ${date(r.recurring_next)}` : ''));
+			} catch (e) { fail(e); }
 		});
 		const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); save().catch(fail); } };
 		document.addEventListener('keydown', onKey);
@@ -1588,6 +1592,7 @@
 			inv.payments?.length ? `${inv.payments.length} erfasste Zahlung${inv.payments.length > 1 ? 'en werden' : ' wird'} mitgelöscht.` : '',
 			inv.time_ids?.length ? `${inv.time_ids.length} Stundeneinträge werden wieder offen.` : '',
 			inv.kind === 'storno' ? 'Die stornierte Rechnung gilt danach wieder.' : '',
+			inv.recurring_id ? 'Stammt sie von einer Dauerrechnung und ist deren letzte, springt die Dauerrechnung auf diesen Zeitraum zurück.' : '',
 			!offer ? 'Hinweis: Ausgestellte Rechnungen sind aufzubewahren – bei Fehlern ist Stornieren meist der richtige Weg.' : '',
 		].filter(Boolean);
 		const ok = await confirmDialog(`${what} ${inv.number} löschen?`, notes.map((x) => `<span style="display:block;margin-bottom:6px">${x}</span>`).join(''), 'Endgültig löschen', { danger: true });
@@ -1596,7 +1601,7 @@
 			const r = await api('invoice_delete', { id: inv.id });
 			await refresh();
 			go(offer ? '#/angebote' : '#/rechnungen');
-			toast(`${what} ${inv.number} gelöscht` + (r.reused ? ' – Nummer wird wieder vergeben' : ''));
+			toast(`${what} ${inv.number} gelöscht` + (r.reused ? ' – Nummer wird wieder vergeben' : '') + (r.recurring_next ? ` · Dauerrechnung wieder fällig am ${date(r.recurring_next)}` : ''));
 		} catch (e) { fail(e); }
 	}
 
@@ -1679,9 +1684,9 @@
 	}
 
 	function hourDrawer(entry, after) {
-		const el = drawer(entry.id ? 'Stunden bearbeiten' : 'Stunden erfassen', '<div id="hd"></div>', entry.id && entry.state !== 'billed' ? `<button class="btn ghost danger" data-del>${icon('trash')} Löschen</button>` : '');
+		const el = drawer(entry.id ? 'Stunden bearbeiten' : 'Stunden erfassen', '<div id="hd"></div>', entry.id && entry.state !== 'billed' ? `<button class="btn ghost danger" data-remove>${icon('trash')} Löschen</button>` : '');
 		hourForm($('#hd', el), { entry, customer: entry.customer_id && entry.fixed ? customerById(entry.customer_id) : null, id: 'd', onSaved: (t) => { closeTop(); after?.(t); } });
-		$('[data-del]', el)?.addEventListener('click', async () => {
+		$('[data-remove]', el)?.addEventListener('click', async () => {
 			if (!await confirmDialog('Eintrag löschen?', `${fmtH(entry.hours)} vom ${date(entry.date)} werden gelöscht.`, 'Löschen', { danger: true })) return;
 			try { await api('hours_delete', { id: entry.id }); closeTop(); toast('Gelöscht'); after?.(); } catch (e) { fail(e); }
 		});
@@ -1976,7 +1981,7 @@
 				<label class="field c6"><span>Notiz</span><textarea name="note" rows="3">${v('note')}</textarea></label>
 				${isNew ? '' : `<label class="switch c6"><input type="checkbox" name="archived" ${+c.archived ? 'checked' : ''}> Archiviert (ausgeblendet, Rechnungen bleiben)</label>`}
 			</form>`,
-			`${isNew ? '' : `<button class="btn ghost danger" data-del>${icon('trash')} Löschen</button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`);
+			`${isNew ? '' : `<button class="btn ghost danger" data-remove>${icon('trash')} Löschen</button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`);
 		plzAssist($('[name=zip]', el), $('[name=city]', el), $('[name=country]', el));
 		const submit = async () => {
 			const fd = Object.fromEntries(new FormData($('#cf', el)));
@@ -1991,7 +1996,7 @@
 		};
 		$('[data-ok]', el).onclick = submit;
 		$('#cf', el).onsubmit = (e) => { e.preventDefault(); submit(); };
-		$('[data-del]', el)?.addEventListener('click', async () => {
+		$('[data-remove]', el)?.addEventListener('click', async () => {
 			if (!await confirmDialog('Kunde löschen?', 'Hat der Kunde Rechnungen, wird er nur archiviert und seine Dauerrechnungen pausiert.', 'Löschen', { danger: true })) return;
 			try { const r = await api('customer_delete', { id: c.id }); await refresh(); closeTop(); toast(r.result === 'archived' ? 'Kunde archiviert' : 'Kunde gelöscht'); go('#/kunden'); } catch (e) { fail(e); }
 		});
@@ -2043,7 +2048,7 @@
 					${isNew ? '' : `<label class="switch"><input type="checkbox" name="archived" ${+p.archived ? 'checked' : ''}> Archiviert</label>`}
 				</div>
 			</form>`,
-			`${isNew ? '' : `<button class="btn ghost danger" data-del>${icon('trash')}</button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`);
+			`${isNew ? '' : `<button class="btn ghost danger" data-remove title="Löschen" aria-label="Löschen">${icon('trash')}<span class="hide-m">Löschen</span></button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`);
 		const submit = async () => {
 			const fd = Object.fromEntries(new FormData($('#pf', el)));
 			fd.price = num(fd.price); fd.tax_rate = num(fd.tax_rate ?? 0);
@@ -2053,7 +2058,7 @@
 		};
 		$('[data-ok]', el).onclick = submit;
 		$('#pf', el).onsubmit = (e) => { e.preventDefault(); submit(); };
-		$('[data-del]', el)?.addEventListener('click', async () => {
+		$('[data-remove]', el)?.addEventListener('click', async () => {
 			try { const r = await api('product_delete', { id: p.id }); await refresh(); closeTop(); toast(r.result === 'archived' ? 'Artikel archiviert (wird in Rechnungen verwendet)' : 'Artikel gelöscht'); after?.(); } catch (e) { fail(e); }
 		});
 	}
@@ -2140,7 +2145,7 @@
 			</div>
 			${!isNew && r.invoices?.length ? '' : ''}
 			${!isNew ? `<div class="hint" style="margin-top:16px">Leistungszeitraum auf der Rechnung: ab dem Fälligkeitsdatum für ${INTERVALS[rec.interval_months]}${rec.last_number ? ` · zuletzt Rechnung <b>${esc(rec.last_number)}</b>` : ''}.</div>` : ''}`,
-			`${isNew ? '' : `<button class="btn ghost danger" data-del>${icon('trash')}</button><button class="btn" data-run>${icon('play')} Jetzt erstellen</button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`,
+			`${isNew ? '' : `<button class="btn ghost danger" data-remove title="Löschen" aria-label="Löschen">${icon('trash')}<span class="hide-m">Löschen</span></button><button class="btn" data-run>${icon('play')} Jetzt erstellen</button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`,
 			{ wide: true });
 		const hint = () => {
 			$('#modehint', el).textContent = { send: 'Rechnung wird ausgestellt und mit PDF an den Kunden gemailt (Kopie an dich).', issue: 'Rechnung wird ausgestellt – versenden machst du selbst.', draft: 'Es entsteht ein Entwurf, den du prüfst, ergänzt und dann ausstellst.' }[rec.mode];
@@ -2158,8 +2163,9 @@
 			return saved;
 		};
 		$('[data-ok]', el).onclick = async () => { try { await save(); closeTop(); toast('Dauerrechnung gespeichert'); after?.(); } catch (e) { fail(e); } };
-		$('[data-del]', el)?.addEventListener('click', async () => {
-			if (!await confirmDialog('Dauerrechnung löschen?', 'Bereits erstellte Rechnungen bleiben erhalten.', 'Löschen', { danger: true })) return;
+		$('[data-remove]', el)?.addEventListener('click', async () => {
+			const who = rec.title || cust?.name || 'diese Dauerrechnung';
+			if (!await confirmDialog(`Dauerrechnung „${who}“ löschen?`, `Es werden <b>keine weiteren Rechnungen</b> mehr erstellt oder versendet – auch nicht automatisch.<br><br>Bereits erstellte Rechnungen${rec.last_number ? ` (zuletzt ${esc(rec.last_number)})` : ''} bleiben erhalten. Zum Pausieren statt Löschen einfach „Aktiv“ ausschalten.`, 'Dauerrechnung löschen', { danger: true })) return;
 			try { await api('recurring_delete', { id: rec.id }); await refresh(); closeTop(); toast('Gelöscht'); after?.(); } catch (e) { fail(e); }
 		});
 		$('[data-run]', el)?.addEventListener('click', async () => {
@@ -2213,7 +2219,7 @@
 					<label class="field c6"><span>Beleg <small>(PDF oder Foto – am Handy direkt fotografieren)</small></span><input type="file" name="file" accept="application/pdf,image/*" class="input" style="padding-top:7px"></label>
 					${e.file ? `<div class="c6"><a class="btn sm" href="api.php?a=expense_file&id=${e.id}" target="_blank" rel="noopener">${icon('paperclip')} Vorhandenen Beleg ansehen</a></div>` : ''}
 				</form>`,
-				`${isNew ? '' : `<button class="btn ghost danger" data-del>${icon('trash')}</button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`);
+				`${isNew ? '' : `<button class="btn ghost danger" data-remove title="Löschen" aria-label="Löschen">${icon('trash')}<span class="hide-m">Löschen</span></button>`}<span class="grow"></span><button class="btn" data-close>Abbrechen</button><button class="btn primary" data-ok>Speichern</button>`);
 			$('[data-ok]', el).onclick = async () => {
 				const fd = new FormData($('#ef', el));
 				fd.set('amount', String(num(fd.get('amount'))));
@@ -2221,7 +2227,7 @@
 				if (!$('[name=file]', el).files.length) fd.delete('file');
 				try { await api('expense_save', fd); list = await api('expenses'); closeTop(); toast('Gespeichert'); draw(); } catch (er) { fail(er); }
 			};
-			$('[data-del]', el)?.addEventListener('click', async () => {
+			$('[data-remove]', el)?.addEventListener('click', async () => {
 				if (!await confirmDialog('Ausgabe löschen?', 'Auch der Beleg wird gelöscht.', 'Löschen', { danger: true })) return;
 				try { await api('expense_delete', { id: e.id }); list = await api('expenses'); closeTop(); draw(); } catch (er) { fail(er); }
 			});

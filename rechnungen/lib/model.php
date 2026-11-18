@@ -758,8 +758,25 @@ function nw_invoice_delete( $id ) {
 		nw_fail( 'Zu dieser Rechnung gibt es die Stornorechnung ' . $inv['storno']['number'] . ' – bitte zuerst diese löschen.' );
 	}
 	$reused = false;
+	$rewind = null;
 	db()->beginTransaction();
 	try {
+		// Letzte Rechnung einer Dauerrechnung gelöscht → Zeitraum ist wieder offen, Datum springt zurück
+		$rec = $inv['recurring_id'] ? q_row( 'SELECT * FROM recurring WHERE id = ? AND last_invoice_id = ?', array( (int) $inv['recurring_id'], $inv['id'] ) ) : null;
+		if ( $rec && $inv['period_from'] && nw_add_months( $inv['period_from'], (int) $rec['interval_months'] ) === $rec['next_date'] ) {
+			$prev   = q_val( 'SELECT MAX(id) FROM invoices WHERE recurring_id = ? AND id != ?', array( $rec['id'], $inv['id'] ) );
+			$rewind = array( 'title' => $rec['title'], 'next_date' => $inv['period_from'] );
+			nw_update(
+				'recurring',
+				(int) $rec['id'],
+				array(
+					'next_date'       => $inv['period_from'],
+					'last_invoice_id' => $prev ? (int) $prev : null,
+					'active'          => ! $rec['end_date'] || $inv['period_from'] <= $rec['end_date'] ? 1 : (int) $rec['active'],
+					'updated_at'      => nw_now(),
+				)
+			);
+		}
 		if ( 'storno' === $inv['kind'] && $inv['ref_id'] ) {
 			nw_update( 'invoices', (int) $inv['ref_id'], array( 'status' => 'issued', 'updated_at' => nw_now() ) ); // Storno weg → Original gilt wieder
 			nw_log( 'Stornorechnung ' . $inv['number'] . ' gelöscht – Rechnung gilt wieder', (int) $inv['ref_id'], $inv['customer_id'] );
@@ -792,7 +809,10 @@ function nw_invoice_delete( $id ) {
 	}
 	$what = 'offer' === $inv['kind'] ? 'Angebot' : ( 'storno' === $inv['kind'] ? 'Stornorechnung' : 'Rechnung' );
 	nw_log( 'draft' === $inv['status'] ? $what . 'sentwurf gelöscht' : $what . ' ' . $inv['number'] . ' gelöscht' . ( $reused ? ' – Nummer wird wieder vergeben' : '' ), null, $inv['customer_id'] );
-	return array( 'number' => $inv['number'], 'reused' => $reused );
+	if ( $rewind ) {
+		nw_log( 'Dauerrechnung „' . $rewind['title'] . '“: nächste Rechnung wieder am ' . nw_date( $rewind['next_date'] ), null, $inv['customer_id'] );
+	}
+	return array( 'number' => $inv['number'], 'reused' => $reused, 'recurring_next' => $rewind ? $rewind['next_date'] : null );
 }
 
 /* ==================================================================== Stunden */

@@ -185,6 +185,18 @@ eq( array( $log['to_addr'], $log['cc'], $log['bcc'], $log['number'], (int) $log[
 ok( false !== strpos( $log['attachment'], 'R.pdf' ) && '' !== $log['error'], 'Anhang und Fehlermeldung protokolliert' );
 eq( count( nw_mail_log( array( 'errors' => true ) )['rows'] ), 1, 'Filter „nur Fehler“' );
 
+section( 'Dauerrechnung & Löschen' );
+$rr  = nw_recurring_save( array( 'customer_id' => $c['id'], 'items' => array( array( 'name' => 'Abo', 'qty' => 1, 'price' => 10 ) ), 'interval_months' => 1, 'next_date' => '2026-11-01', 'mode' => 'issue', 'active' => 1 ) );
+$ra  = nw_recurring_run( $rr['id'] );
+$rb  = nw_recurring_run( $rr['id'] );
+eq( nw_recurring_get( $rr['id'] )['next_date'], '2027-01-01', 'zwei Läufe: Datum zwei Monate weiter' );
+eq( nw_invoice_delete( $ra['invoice']['id'] )['recurring_next'], null, 'ältere Rechnung gelöscht: kein Rücksprung' );
+eq( nw_recurring_get( $rr['id'] )['next_date'], '2027-01-01', 'ältere Rechnung löschen ändert das Datum nicht' );
+$rd = nw_invoice_delete( $rb['invoice']['id'] );
+eq( array( $rd['recurring_next'], nw_recurring_get( $rr['id'] )['next_date'] ), array( '2026-12-01', '2026-12-01' ), 'letzte Rechnung gelöscht: Dauerrechnung springt zurück' );
+nw_recurring_delete( $rr['id'] );
+eq( (int) q_val( 'SELECT COUNT(*) FROM recurring WHERE id = ?', array( $rr['id'] ) ), 0, 'Dauerrechnung mit erstellten Rechnungen löschbar' );
+
 section( 'E-Mail-Vorlagen' );
 eq( nw_mail_parts( 'Hallo', 'text' )['html'], '', 'Schlicht: nur Text, kein HTML' );
 ok( false !== strpos( nw_mail_parts( 'Hallo', 'standard' )['html'], '[ ' ), 'Standard: HTML mit Firmenname' );
