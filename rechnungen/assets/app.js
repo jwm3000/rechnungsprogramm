@@ -836,6 +836,10 @@
 		let f = q.f || store.get('inv.f', 'all');
 		let year = q.year || store.get('inv.year', '');
 		let search = q.q || '';
+		// Bis 500 Treffer alles auf einmal (gemessen: am Handy rund 0,35 s), darüber häppchenweise
+		// zu je 250 beim Scrollen. Suche, Filter und Summen gelten immer für alle Rechnungen.
+		const ALL = 500, PAGE = 250;
+		let shown = PAGE, observer = null;
 		const filters = [['all', 'Alle'], ['open', 'Offen'], ['overdue', 'Überfällig'], ['paid', 'Bezahlt'], ['draft', 'Entwürfe'], ['cancelled', 'Storniert']];
 		const match = (i) => {
 			if (f === 'open' && !(i.state === 'open' || i.state === 'overdue' || i.state === 'partial')) return false;
@@ -864,23 +868,57 @@
 			const base = S.invoices.filter((i) => !year || i.invoice_date.slice(0, 4) === year);
 			const count = (k) => base.filter((i) => k === 'all' ? true : k === 'open' ? (i.state === 'open' || i.state === 'overdue' || i.state === 'partial') : k === 'cancelled' ? (i.state === 'cancelled' || i.state === 'storno') : i.state === k).length;
 			$('#chips').innerHTML = filters.map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-f="${k}">${l} <span class="n">${count(k)}</span></button>`).join('');
-			$$('#chips .chip').forEach((c) => (c.onclick = () => { f = c.dataset.f; draw(); }));
+			$$('#chips .chip').forEach((c) => (c.onclick = () => { f = c.dataset.f; shown = PAGE; draw(); }));
 			const rows = S.invoices.filter(match);
 			const sum = rows.filter((i) => i.status !== 'draft').reduce((a, i) => a + i.gross, 0);
 			const open = rows.filter((i) => i.state === 'open' || i.state === 'overdue' || i.state === 'partial').reduce((a, i) => a + i.open, 0);
+			shown = rows.length <= ALL ? rows.length : Math.min(Math.max(shown, PAGE), rows.length);
+			observer?.disconnect();
 			$('#list').innerHTML = rows.length ? `<table class="table resp"><thead><tr><th style="width:44px" title="Bezahlt">✓</th><th>Nr.</th><th>Kunde</th><th class="hide-m">Datum</th><th>Status</th><th class="th-r">Betrag</th></tr></thead><tbody>
-				${rows.map((i) => `<tr class="click" data-id="${i.id}">
+				${rows.slice(0, shown).map(rowHtml).join('')}</tbody></table>
+				<div class="lazy-more" id="more"></div>
+				<div class="sumbar"><span>${rows.length} Einträge</span><span>Summe <b class="num">${money(sum)}</b></span>${open ? `<span>davon offen <b class="num">${money(open)}</b></span>` : ''}</div>`
+				: '<div class="empty"><span class="big">[ ]</span>Keine Rechnungen gefunden.</div>';
+			bindRows($('#list'));
+			// Weitere Zeilen anhängen, kurz bevor das Listenende sichtbar wird (ohne die Liste neu aufzubauen)
+			const more = () => {
+				if (shown >= rows.length) return;
+				const tb = $('#list tbody');
+				const add = rows.slice(shown, shown + PAGE);
+				shown += add.length;
+				const tmp = document.createElement('tbody');
+				tmp.innerHTML = add.map(rowHtml).join('');
+				const fresh = [...tmp.children];
+				tb.append(...fresh);
+				fresh.forEach((tr) => bindRows(tr));
+				drawMore();
+			};
+			const drawMore = () => {
+				const box = $('#more');
+				if (!box) return;
+				box.innerHTML = shown < rows.length ? `<span class="muted">${shown} von ${rows.length} angezeigt</span><button type="button" class="btn sm" data-more>Weitere ${Math.min(PAGE, rows.length - shown)} laden</button>` : '';
+				$('[data-more]', box)?.addEventListener('click', more);
+				if (shown >= rows.length) observer?.disconnect();
+			};
+			drawMore();
+			if (rows.length > shown && 'IntersectionObserver' in window) {
+				observer = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) more(); }, { rootMargin: '800px 0px' });
+				observer.observe($('#more'));
+			}
+		};
+		const rowHtml = (i) => `<tr class="click" data-id="${i.id}">
 					<td class="m-a"><button class="check ${i.state === 'paid' ? 'on' : i.state === 'partial' ? 'half' : ''} ${['open', 'overdue', 'paid', 'partial'].includes(i.state) ? '' : 'na'}" data-pay="${i.id}" aria-label="Bezahlt umschalten" title="${i.state === 'paid' ? 'Bezahlt am ' + date(i.paid_at) + ' – zum Zurücknehmen klicken' : i.state === 'partial' ? 'Teilweise bezahlt – Restbetrag ' + money(i.open) + ' abhaken' : 'Zahlungseingang abhaken'}">${icon('check')}</button></td>
 					<td class="m-hide mono">${esc(i.number || '—')}</td>
 					<td class="m-b strong"><div>${withRec(esc(i.recipient.name || 'Ohne Empfänger'), i.is_recurring)}</div><div class="sub">${esc(i.item_names || '')}</div></td>
 					<td class="m-c muted nowrap"><span class="show-m mono">${esc(i.number || 'Entwurf')} · </span>${date(i.invoice_date)}</td>
 					<td class="m-e">${badge(i.state, i.days_overdue > 0 ? ' · ' + i.days_overdue + ' T.' : '')}${i.sent_at ? ` <span class="muted" title="Per E-Mail versendet am ${date(i.sent_at)}">${icon('mail')}</span>` : ''}</td>
 					<td class="m-d td-r num strong" style="${i.gross < 0 ? 'color:var(--muted)' : ''}">${money(i.gross)}${i.state === 'partial' ? `<div class="sub" style="font-weight:600">offen ${money(i.open)}</div>` : ''}</td>
-				</tr>`).join('')}</tbody></table>
-				<div class="sumbar"><span>${rows.length} Einträge</span><span>Summe <b class="num">${money(sum)}</b></span>${open ? `<span>davon offen <b class="num">${money(open)}</b></span>` : ''}</div>`
-				: '<div class="empty"><span class="big">[ ]</span>Keine Rechnungen gefunden.</div>';
-			$$('#list tr[data-id]').forEach((tr) => (tr.onclick = (e) => { if (!e.target.closest('.check')) go('#/rechnung/' + tr.dataset.id); }));
-			$$('#list [data-pay]').forEach((b) => (b.onclick = async (e) => {
+				</tr>`;
+		/** Klicks für Zeilen in el (ganze Liste oder eine angehängte Zeile). */
+		const bindRows = (el) => {
+			const trs = el.matches?.('tr[data-id]') ? [el] : $$('tr[data-id]', el);
+			trs.forEach((tr) => (tr.onclick = (e) => { if (!e.target.closest('.check')) go('#/rechnung/' + tr.dataset.id); }));
+			trs.map((tr) => $('[data-pay]', tr)).filter(Boolean).forEach((b) => (b.onclick = async (e) => {
 				e.stopPropagation();
 				const id = +b.dataset.pay;
 				const inv = S.invoices.find((i) => +i.id === id);
@@ -889,8 +927,8 @@
 				} else quickPay(id, b, draw);
 			}));
 		};
-		$('#year').onchange = (e) => { year = e.target.value; draw(); };
-		$('#q').oninput = debounce((e) => { search = e.target.value; draw(); }, 120);
+		$('#year').onchange = (e) => { year = e.target.value; shown = PAGE; draw(); };
+		$('#q').oninput = debounce((e) => { search = e.target.value; shown = PAGE; draw(); }, 120);
 		$('[data-export]').onclick = () => exportDialog(year);
 		draw();
 		if (search) $('#q').focus();

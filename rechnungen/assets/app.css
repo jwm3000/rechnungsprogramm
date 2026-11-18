@@ -921,6 +921,9 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 	.show-m { display: none !important; }
 }
 
+.lazy-more { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 13px; }
+.lazy-more:not(:empty) { padding: 14px; border-top: 1px solid var(--line-2); }
+
 /* Vorschau Dauerrechnung */
 .pv-pop { width: min(860px, calc(100vw - 32px)); height: calc(100dvh - 48px); max-height: 1100px; overflow: hidden; }
 .pv-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 16px 12px 22px; border-bottom: 1px solid var(--line); }
