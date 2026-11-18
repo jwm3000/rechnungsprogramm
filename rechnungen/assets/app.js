@@ -349,6 +349,7 @@
 				<nav class="nav">${NAV.map(([h, i, l]) => `<a href="${h}" data-nav="${h}" title="${l}">${icon(i)}<span class="lbl">${l}</span><span class="count" data-count="${h}"></span></a>`).join('')}
 				</nav>
 				<div class="side-foot">
+					<div id="updslot"></div>
 					<button type="button" class="side-link" data-palette title="Suchen">${icon('search')}<span class="lbl">Suchen</span><span class="lbl keys"><kbd>${mac ? '⌘' : 'Strg'}</kbd><kbd>K</kbd></span></button>
 					<a class="side-link" href="#/einstellungen" data-nav="#/einstellungen" title="Einstellungen">${icon('cog')}<span class="lbl">Einstellungen</span></a>
 					<div class="side-row">
@@ -395,6 +396,7 @@
 			$('[data-collapse]').setAttribute('aria-label', on ? 'Menü ausklappen' : 'Menü einklappen');
 		};
 		updateNavCounts();
+		drawUpdSlot();
 	}
 
 	function updateNavCounts() {
@@ -2637,6 +2639,8 @@
 		let u;
 		try { u = await api('update_check', undefined, { query: force ? { force: 1 } : {} }); } catch (e) { box.innerHTML = `<div class="note-bad">${icon('alert')}<span>${esc(e.message)}</span></div>`; return; }
 		const notes = (u.notes || '').trim();
+		UPD = u.newer && !u.error ? u : null;
+		drawUpdSlot();
 		box.innerHTML = `
 			<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px">
 				<div><div class="label-s">Installiert</div><div style="font-size:24px;font-weight:750" class="mono">${esc(u.current)}</div></div>
@@ -2659,6 +2663,7 @@
 			e.target.disabled = true; e.target.textContent = 'Wird installiert …';
 			try {
 				const r = await api('update_install', {});
+				UPD = null; drawUpdSlot();
 				toast(`Update auf ${r.to} installiert – lade neu …`);
 				setTimeout(() => location.reload(), 1200);
 			} catch (er) { fail(er); updatePanel(false); }
@@ -2667,6 +2672,66 @@
 			if (!await confirmDialog('Stand wiederherstellen?', `Die Programmdateien aus <b>${esc(b.dataset.rollback)}</b> werden zurückgespielt. Deine aktuellen Daten bleiben unverändert.`, 'Wiederherstellen', { danger: true })) return;
 			try { await api('update_rollback', { name: b.dataset.rollback }); toast('Wiederhergestellt – lade neu …'); setTimeout(() => location.reload(), 1200); } catch (er) { fail(er); }
 		}));
+	}
+
+	/* ================================================================ Update-Hinweis */
+
+	let UPD = null; // neuere Version (Ergebnis von update_check) oder null
+
+	/** Stichpunkte aus den Release-Notizen („- **Fett** Text“) als HTML. */
+	const updNotes = (notes, max = 5) => String(notes).split('\n').map((l) => l.trim()).filter((l) => /^[-*] /.test(l)).slice(0, max)
+		.map((l) => esc(l.slice(2)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'));
+
+	/** Im Hintergrund prüfen (der Server fragt GitHub höchstens alle 12 Stunden) – bei neuer Version Hinweis und Popup. */
+	async function checkUpdate() {
+		try { const u = await api('update_check'); UPD = u.newer && !u.error ? u : null; } catch (e) { UPD = null; }
+		drawUpdSlot();
+		if (!UPD || location.hash.startsWith('#/einstellungen/update')) return;
+		// Popup bei jedem Öffnen der App – aber nie mitten in ungespeicherter Arbeit oder über einem anderen Dialog
+		setTimeout(() => { if (UPD && !layers.length && !current?.dirty) updatePopup(); }, 1400);
+	}
+
+	function drawUpdSlot() {
+		$('[data-menu]')?.classList.toggle('has-upd', !!UPD);
+		const slot = $('#updslot');
+		if (!slot) return;
+		slot.innerHTML = UPD ? `<a class="side-link upd-link" href="#/einstellungen/update" title="Version ${esc(UPD.latest)} verfügbar – jetzt aktualisieren">
+			<span class="upd-ic">${icon('download')}<i class="upd-dot"></i></span><span class="lbl">Update <b class="mono">${esc(UPD.latest)}</b> verfügbar</span></a>` : '';
+		$('a', slot)?.addEventListener('click', () => $('.shell')?.classList.remove('menu-open'));
+	}
+
+	function updatePopup() {
+		const u = UPD;
+		if (!u || $('.upd-pop')) return;
+		const items = updNotes(u.notes || '');
+		const el = openLayer(`
+			<div class="upd-hero">
+				<div class="upd-rays" aria-hidden="true"></div>
+				<div class="upd-confetti" aria-hidden="true">${Array.from({ length: 14 }, (_, i) => `<i style="--i:${i}"></i>`).join('')}</div>
+				<div class="upd-badge">${icon('download')}</div>
+				<div class="upd-kicker">Neue Version verfügbar</div>
+				<h2>Version ${esc(u.latest)} ist da!</h2>
+				<div class="upd-vers"><span class="mono">${esc(u.current)}</span>${icon('right')}<span class="mono">${esc(u.latest)}</span></div>
+			</div>
+			<div class="upd-body">
+				${items.length ? `<div class="upd-what">Was ist neu</div><ul class="upd-list">${items.map((x) => `<li>${x}</li>`).join('')}</ul>` : ''}
+				${u.writable ? '' : `<div class="note-warn">${icon('alert')}<span>Der Programmordner ist für PHP nicht beschreibbar – das Update bitte per FTP einspielen.</span></div>`}
+				<p class="upd-nag">Dauert ein paar Sekunden, vorher wird alles gesichert. Dieses Fenster kommt bei jedem Öffnen wieder, bis das Update drauf ist.</p>
+			</div>
+			<div class="drawer-foot"><button type="button" class="btn ghost" data-close>Später</button><span class="grow"></span>
+				<a class="btn" href="#/einstellungen/update" data-more>Details</a>
+				<button type="button" class="btn primary" data-go ${u.writable ? '' : 'disabled'} autofocus>${icon('download')} Jetzt installieren</button></div>`, 'dialog upd-pop');
+		$('[data-more]', el).onclick = () => closeTop();
+		$('[data-go]', el).onclick = async (e) => {
+			const b = e.currentTarget;
+			b.disabled = true; b.textContent = 'Wird installiert …';
+			$('[data-close]', el).disabled = true;
+			try {
+				const r = await api('update_install', {});
+				toast(`Update auf ${r.to} installiert – lade neu …`);
+				setTimeout(() => location.reload(), 1200);
+			} catch (er) { closeTop(); fail(er); }
+		};
 	}
 
 	/* ================================================================ Befehlspalette (⌘K) */
@@ -2735,6 +2800,7 @@
 		applyUi(S.settings.ui_theme);
 		renderShell();
 		route();
+		checkUpdate();
 	}
 
 	function renderAuth(hasPassword) {
