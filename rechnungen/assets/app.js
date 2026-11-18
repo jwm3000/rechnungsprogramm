@@ -15,10 +15,12 @@
 	const qty = (v) => nfNum.format(+v || 0);
 	const dec = (v) => nf2.format(+v || 0);
 	const date = (iso) => (iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '');
+	/** Zahl aus Eingaben: „1.234,50“, „2.500“ (Tausenderpunkt), „3.5“, auch mit „€“ – wie nw_num() am Server. */
 	const num = (s) => {
 		if (typeof s === 'number') return s;
-		s = String(s ?? '').trim().replace(/\s/g, '');
+		s = String(s ?? '').replace(/[^\d,.\-]/g, '');
 		if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+		else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
 		const n = parseFloat(s);
 		return isNaN(n) ? 0 : n;
 	};

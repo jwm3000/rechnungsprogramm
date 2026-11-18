@@ -176,10 +176,28 @@ function nw_update( $table, $id, array $row ) {
 	q( 'UPDATE ' . $table . ' SET ' . $set . ' WHERE id = ?', array_merge( array_values( $row ), array( $id ) ) );
 }
 
+/**
+ * Datenbank-Schema auf den neuesten Stand bringen. Jeder Schritt läuft in einer eigenen Transaktion
+ * mit Schreibsperre: bricht er ab, bleibt nichts halb erweitert; laufen zwei Aufrufe gleichzeitig
+ * (direkt nach einem Update), führt nur einer den Schritt aus.
+ */
 function nw_migrate( PDO $pdo ) {
-	$v = (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn();
+	$v    = (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn();
+	$step = function ( $to, $sql ) use ( $pdo ) {
+		$pdo->exec( 'BEGIN IMMEDIATE' );
+		try {
+			if ( (int) $pdo->query( 'PRAGMA user_version' )->fetchColumn() < $to ) {
+				$pdo->exec( $sql );
+			}
+			$pdo->exec( 'COMMIT' );
+		} catch ( Throwable $e ) {
+			$pdo->exec( 'ROLLBACK' );
+			throw $e;
+		}
+	};
 	if ( $v < 1 ) {
-		$pdo->exec(
+		$step(
+			1,
 			"CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
 			CREATE TABLE customers (
 				id INTEGER PRIMARY KEY, number TEXT UNIQUE, company TEXT DEFAULT '', company2 TEXT DEFAULT '',
@@ -227,7 +245,7 @@ function nw_migrate( PDO $pdo ) {
 	}
 	if ( $v < 2 ) {
 		// Angebote: gleiche Tabelle, kind = 'offer'
-		$pdo->exec(
+		$step( 2, 
 			"ALTER TABLE invoices ADD COLUMN valid_until TEXT;
 			ALTER TABLE invoices ADD COLUMN offer_state TEXT;
 			ALTER TABLE invoices ADD COLUMN converted_id INTEGER;
@@ -237,11 +255,11 @@ function nw_migrate( PDO $pdo ) {
 	}
 	if ( $v < 3 ) {
 		// Schrumpfen: auto · on · off
-		$pdo->exec( "ALTER TABLE invoices ADD COLUMN compact TEXT DEFAULT 'auto'; PRAGMA user_version = 3;" );
+		$step( 3,  "ALTER TABLE invoices ADD COLUMN compact TEXT DEFAULT 'auto'; PRAGMA user_version = 3;" );
 	}
 	if ( $v < 4 ) {
 		// Zahlungen einzeln (Teilzahlungen); bisherige Zahlungseingänge übernehmen
-		$pdo->exec(
+		$step( 4, 
 			"CREATE TABLE payments (id INTEGER PRIMARY KEY, invoice_id INTEGER REFERENCES invoices(id) ON DELETE CASCADE, date TEXT, amount REAL, note TEXT DEFAULT '', created_at TEXT);
 			CREATE INDEX pay_invoice ON payments(invoice_id);
 			INSERT INTO payments (invoice_id, date, amount, created_at) SELECT id, paid_at, COALESCE(paid_amount, gross), datetime('now') FROM invoices WHERE paid_at IS NOT NULL;
@@ -250,7 +268,7 @@ function nw_migrate( PDO $pdo ) {
 	}
 	if ( $v < 5 ) {
 		// E-Mail-Protokoll ausführlich, Stundenerfassung, Stundensatz je Kunde
-		$pdo->exec(
+		$step( 5, 
 			"ALTER TABLE mail_log ADD COLUMN number TEXT;
 			ALTER TABLE mail_log ADD COLUMN from_addr TEXT;
 			ALTER TABLE mail_log ADD COLUMN cc TEXT;
@@ -275,7 +293,7 @@ function nw_migrate( PDO $pdo ) {
 	}
 	if ( $v < 6 ) {
 		// Eigener E-Mail-Text je Dauerrechnung
-		$pdo->exec(
+		$step( 6, 
 			"ALTER TABLE recurring ADD COLUMN mail_custom INTEGER DEFAULT 0;
 			ALTER TABLE recurring ADD COLUMN mail_subject TEXT DEFAULT '';
 			ALTER TABLE recurring ADD COLUMN mail_body TEXT DEFAULT '';
@@ -557,6 +575,29 @@ function nw_slug( $s ) {
 	$s = preg_replace( '/[^A-Za-z0-9._-]+/', '-', $s );
 	$s = preg_replace( array( '/\.{2,}/', '/-{2,}/' ), array( '.', '-' ), $s );
 	return trim( $s, '-.' );
+}
+
+/**
+ * Zahl aus Eingaben lesen – österreichisch („1.234,50“, „2.500“) wie international („3.5“), auch mit „€“.
+ * Echte Zahlen (aus JSON) bleiben unverändert.
+ */
+function nw_num( $v ) {
+	if ( is_int( $v ) || is_float( $v ) ) {
+		return (float) $v;
+	}
+	$s = preg_replace( '/[^\d,.\-]/', '', (string) $v );
+	if ( false !== strpos( $s, ',' ) ) {
+		$s = str_replace( array( '.', ',' ), array( '', '.' ), $s );
+	} elseif ( preg_match( '/^-?\d{1,3}(\.\d{3})+$/', $s ) ) {
+		$s = str_replace( '.', '', $s ); // nur Tausenderpunkte
+	}
+	return is_numeric( $s ) ? (float) $s : 0.0;
+}
+
+/** Text für CSV: beginnt er mit = + - @, würde Excel ihn als Formel ausführen – mit ' entschärfen. */
+function nw_csv_text( $s ) {
+	$s = (string) $s;
+	return preg_match( '/^[=+\-@\t\r]/', $s ) ? "'" . $s : $s;
 }
 
 function nw_is_email( $s ) {

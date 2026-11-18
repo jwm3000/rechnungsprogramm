@@ -116,7 +116,7 @@ function nw_customer_save( array $d ) {
 		}
 	}
 	$row['payment_days'] = isset( $d['payment_days'] ) && '' !== (string) $d['payment_days'] ? max( 0, (int) $d['payment_days'] ) : null;
-	$row['hour_rate']    = isset( $d['hour_rate'] ) && '' !== trim( (string) $d['hour_rate'] ) ? max( 0, round( (float) str_replace( ',', '.', (string) $d['hour_rate'] ), 2 ) ) : null;
+	$row['hour_rate']    = isset( $d['hour_rate'] ) && '' !== trim( (string) $d['hour_rate'] ) ? max( 0, round( nw_num( $d['hour_rate'] ), 2 ) ) : null;
 	$row['archived']     = empty( $d['archived'] ) ? 0 : 1;
 	$row['updated_at']   = nw_now();
 	$number              = trim( (string) ( $d['number'] ?? '' ) );
@@ -143,7 +143,9 @@ function nw_next_customer_number() {
 }
 
 function nw_customer_delete( $id ) {
-	$n = (int) q_val( 'SELECT COUNT(*) FROM invoices WHERE customer_id = ?', array( (int) $id ) );
+	// Mit Rechnungen, Angeboten oder Stunden wird archiviert – diese Daten bleiben erhalten
+	$n = (int) q_val( 'SELECT COUNT(*) FROM invoices WHERE customer_id = ?', array( (int) $id ) )
+		+ (int) q_val( 'SELECT COUNT(*) FROM time_entries WHERE customer_id = ?', array( (int) $id ) );
 	if ( $n > 0 ) {
 		q( 'UPDATE customers SET archived = 1 WHERE id = ?', array( (int) $id ) );
 		q( 'UPDATE recurring SET active = 0 WHERE customer_id = ?', array( (int) $id ) );
@@ -171,7 +173,7 @@ function nw_product_save( array $d ) {
 		'name'        => trim( (string) ( $d['name'] ?? '' ) ),
 		'description' => trim( (string) ( $d['description'] ?? '' ) ),
 		'unit'        => trim( (string) ( $d['unit'] ?? '' ) ),
-		'price'       => round( (float) ( $d['price'] ?? 0 ), 4 ),
+		'price'       => round( nw_num( $d['price'] ?? 0 ), 4 ),
 		'tax_rate'    => (float) ( $d['tax_rate'] ?? nw_setting( 'default_tax' ) ),
 		'category'    => trim( (string) ( $d['category'] ?? '' ) ),
 		'recurring'   => empty( $d['recurring'] ) ? 0 : 1,
@@ -223,9 +225,9 @@ function nw_items_clean( array $items, $small ) {
 		if ( '' === $name && '' === trim( $desc ) ) {
 			continue;
 		}
-		$qty      = round( (float) str_replace( ',', '.', (string) ( $it['qty'] ?? 1 ) ), 4 );
-		$price    = round( (float) str_replace( ',', '.', (string) ( $it['price'] ?? 0 ) ), 4 );
-		$discount = min( 100, max( 0, round( (float) str_replace( ',', '.', (string) ( $it['discount'] ?? 0 ) ), 4 ) ) );
+		$qty      = round( nw_num( $it['qty'] ?? 1 ), 4 );
+		$price    = round( nw_num( $it['price'] ?? 0 ), 4 );
+		$discount = min( 100, max( 0, round( nw_num( $it['discount'] ?? 0 ), 4 ) ) );
 		$out[]    = array(
 			'pos'         => ++$pos,
 			'product_id'  => ! empty( $it['product_id'] ) ? (int) $it['product_id'] : null,
@@ -578,7 +580,7 @@ function nw_invoice_pay( $id, $date = null, $amount = null, $note = '' ) {
 		nw_fail( 'Die Rechnung ist bereits vollständig bezahlt.' );
 	}
 	$date   = preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $date ) ? $date : nw_today();
-	$amount = null === $amount || '' === $amount ? $inv['open'] : round( (float) $amount, 2 );
+	$amount = null === $amount || '' === $amount ? $inv['open'] : round( nw_num( $amount ), 2 );
 	if ( $amount <= 0 ) {
 		nw_fail( 'Bitte einen Betrag größer als 0 angeben.' );
 	}
@@ -831,7 +833,7 @@ function nw_parse_hours( $v ) {
 
 function nw_hour_rate( $customer_id ) {
 	$c = $customer_id ? q_row( 'SELECT hour_rate FROM customers WHERE id = ?', array( (int) $customer_id ) ) : null;
-	return null !== ( $c['hour_rate'] ?? null ) ? (float) $c['hour_rate'] : (float) str_replace( ',', '.', nw_setting( 'hour_rate' ) ?: '0' );
+	return null !== ( $c['hour_rate'] ?? null ) ? (float) $c['hour_rate'] : nw_num( nw_setting( 'hour_rate' ) );
 }
 
 function nw_time_row( array $r ) {
@@ -954,7 +956,7 @@ function nw_time_summary() {
 		'week'     => (float) q_val( 'SELECT COALESCE(SUM(hours),0) FROM time_entries WHERE date >= ?', array( $monday ) ),
 		'month'    => (float) q_val( 'SELECT COALESCE(SUM(hours),0) FROM time_entries WHERE date >= ?', array( date( 'Y-m-01' ) ) ),
 		'projects' => array_column( q_all( "SELECT project, MAX(date) AS d FROM time_entries WHERE project != '' GROUP BY project ORDER BY d DESC LIMIT 30" ), 'project' ),
-		'rate'     => (float) str_replace( ',', '.', nw_setting( 'hour_rate' ) ?: '0' ),
+		'rate'     => nw_num( nw_setting( 'hour_rate' ) ),
 	);
 }
 
@@ -1162,7 +1164,13 @@ function nw_recurring_run( $id, $mode = null ) {
 	$note = '';
 	$mail = null;
 	if ( 'draft' !== $mode ) {
-		$inv = nw_invoice_issue( $inv['id'] );
+		try {
+			$inv = nw_invoice_issue( $inv['id'] );
+		} catch ( Throwable $e ) {
+			// Kein verwaister Entwurf: sonst legt jeder Cron-Lauf einen weiteren an
+			nw_invoice_delete( $inv['id'] );
+			throw $e;
+		}
 		if ( 'send' === $mode ) {
 			$to_addr = $r['email_to'];
 			if ( ! nw_emails( $to_addr ) ) {
@@ -1185,6 +1193,20 @@ function nw_recurring_run( $id, $mode = null ) {
 
 /** Alle fälligen Dauerrechnungen (für Cron und den Knopf in der Übersicht). */
 function nw_recurring_run_due() {
+	// Sperre: zwei gleichzeitige Läufe (Webcron-Wiederholung, Klick während des Crons) würden doppelt erstellen und senden
+	$lock = fopen( nw_data_dir() . '/cron.lock', 'c' );
+	if ( ! $lock || ! flock( $lock, LOCK_EX | LOCK_NB ) ) {
+		throw new NW_Error( 'Die Dauerrechnungen werden gerade schon erstellt – bitte kurz warten.' );
+	}
+	try {
+		return nw_recurring_run_due_locked();
+	} finally {
+		flock( $lock, LOCK_UN );
+		fclose( $lock );
+	}
+}
+
+function nw_recurring_run_due_locked() {
 	$done = array();
 	foreach ( q_all( 'SELECT id FROM recurring WHERE active = 1 AND next_date <= ? ORDER BY next_date', array( nw_today() ) ) as $r ) {
 		// Mehrfach fällig (z. B. monatlich und Cron lief lange nicht)? Höchstens 12 Durchläufe.
@@ -1222,7 +1244,7 @@ function nw_expense_save( array $d ) {
 		'vendor'      => trim( (string) ( $d['vendor'] ?? '' ) ),
 		'description' => trim( (string) ( $d['description'] ?? '' ) ),
 		'category'    => trim( (string) ( $d['category'] ?? '' ) ),
-		'amount'      => round( (float) str_replace( ',', '.', (string) ( $d['amount'] ?? 0 ) ), 2 ),
+		'amount'      => round( nw_num( $d['amount'] ?? 0 ), 2 ),
 		'updated_at'  => nw_now(),
 	);
 	if ( '' === $row['vendor'] && '' === $row['description'] ) {

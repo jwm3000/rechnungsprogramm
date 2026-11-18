@@ -90,8 +90,26 @@ class NW_SMTP {
 		return $this->expect( array( 250 ) );
 	}
 
+	/**
+	 * Kopfzeilen-Text: Zeilenumbrüche entfernen (kein Einschleusen weiterer Kopfzeilen) und Umlaute
+	 * nach RFC 2047 kodieren – in Stücken von höchstens 75 Zeichen, ohne ein Zeichen zu zerteilen.
+	 */
 	public static function header_encode( $s ) {
-		return preg_match( '/[^\x20-\x7e]/', $s ) ? '=?UTF-8?B?' . base64_encode( $s ) . '?=' : $s;
+		$s = trim( preg_replace( '/[\r\n\t]+/', ' ', (string) $s ) );
+		if ( ! preg_match( '/[^\x20-\x7e]/', $s ) ) {
+			return $s;
+		}
+		$parts = array();
+		$chunk = '';
+		foreach ( preg_split( '//u', $s, -1, PREG_SPLIT_NO_EMPTY ) as $ch ) {
+			if ( strlen( $chunk . $ch ) > 45 ) { // 45 Bytes → 60 Zeichen Base64 + 12 Zeichen Rahmen
+				$parts[] = $chunk;
+				$chunk   = '';
+			}
+			$chunk .= $ch;
+		}
+		$parts[] = $chunk;
+		return implode( "\r\n ", array_map( function ( $p ) { return '=?UTF-8?B?' . base64_encode( $p ) . '?='; }, $parts ) );
 	}
 
 	public static function address( $email, $name = '' ) {
@@ -111,7 +129,7 @@ class NW_SMTP {
 			$h[] = 'Cc: ' . implode( ', ', $m['cc'] );
 		}
 		if ( ! empty( $m['reply_to'] ) ) {
-			$h[] = 'Reply-To: ' . $m['reply_to'];
+			$h[] = 'Reply-To: ' . preg_replace( '/[\r\n]+/', '', $m['reply_to'] );
 		}
 		$h[] = 'Subject: ' . self::header_encode( $m['subject'] );
 		$h[] = 'Message-ID: <' . ( $m['message_id'] ?? bin2hex( random_bytes( 12 ) ) . '@' . $domain ) . '>';

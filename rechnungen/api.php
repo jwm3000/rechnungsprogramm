@@ -429,7 +429,7 @@ try {
 				if ( 'draft' === $r['status'] ) {
 					continue;
 				}
-				fputcsv( $fh, array( $r['number'], 'storno' === $r['kind'] ? 'Stornorechnung' : 'Rechnung', nw_date( $r['invoice_date'] ), $r['recipient']['number'], $r['recipient']['name'], nw_money( $r['net'], false ), nw_money( $r['tax'], false ), nw_money( $r['gross'], false ), nw_money( $r['paid'], false ), nw_money( $r['open'], false ), $labels[ $r['state'] ], nw_date( $r['due_date'] ), nw_date( $r['paid_at'] ) ), ';' );
+				fputcsv( $fh, array( $r['number'], 'storno' === $r['kind'] ? 'Stornorechnung' : 'Rechnung', nw_date( $r['invoice_date'] ), nw_csv_text( $r['recipient']['number'] ), nw_csv_text( $r['recipient']['name'] ), nw_money( $r['net'], false ), nw_money( $r['tax'], false ), nw_money( $r['gross'], false ), nw_money( $r['paid'], false ), nw_money( $r['open'], false ), $labels[ $r['state'] ], nw_date( $r['due_date'] ), nw_date( $r['paid_at'] ) ), ';' );
 			}
 			rewind( $fh );
 			send_file( stream_get_contents( $fh ), 'Rechnungen' . ( $year ? '-' . $year : '' ) . '.csv', 'text/csv; charset=utf-8', true );
@@ -439,7 +439,7 @@ try {
 			fwrite( $fh, "\xEF\xBB\xBF" );
 			fputcsv( $fh, array( 'Datum', 'Lieferant', 'Beschreibung', 'Kategorie', 'Betrag', 'Beleg' ), ';' );
 			foreach ( array_reverse( nw_expenses_list( $year ?: null ) ) as $e ) {
-				fputcsv( $fh, array( nw_date( $e['date'] ), $e['vendor'], $e['description'], $e['category'], nw_money( $e['amount'], false ), $e['file'] ? basename( $e['file'] ) : '' ), ';' );
+				fputcsv( $fh, array( nw_date( $e['date'] ), nw_csv_text( $e['vendor'] ), nw_csv_text( $e['description'] ), nw_csv_text( $e['category'] ), nw_money( $e['amount'], false ), $e['file'] ? basename( $e['file'] ) : '' ), ';' );
 			}
 			rewind( $fh );
 			send_file( stream_get_contents( $fh ), 'Ausgaben' . ( $year ? '-' . $year : '' ) . '.csv', 'text/csv; charset=utf-8', true );
@@ -448,7 +448,7 @@ try {
 			fwrite( $fh, "\xEF\xBB\xBF" );
 			fputcsv( $fh, array( 'Datum', 'Kunde', 'Projekt', 'Notiz', 'Stunden', 'Status', 'Rechnung' ), ';' );
 			foreach ( array_reverse( nw_time_list( array( 'customer_id' => (int) ( $_GET['customer_id'] ?? 0 ) ) ) ) as $t ) {
-				fputcsv( $fh, array( nw_date( $t['date'] ), $t['customer_name'], $t['project'], $t['note'], number_format( $t['hours'], 2, ',', '' ), array( 'open' => 'offen', 'draft' => 'im Entwurf', 'billed' => 'abgerechnet' )[ $t['state'] ], $t['invoice_number'] ), ';' );
+				fputcsv( $fh, array( nw_date( $t['date'] ), nw_csv_text( $t['customer_name'] ), nw_csv_text( $t['project'] ), nw_csv_text( $t['note'] ), number_format( $t['hours'], 2, ',', '' ), array( 'open' => 'offen', 'draft' => 'im Entwurf', 'billed' => 'verrechnet' )[ $t['state'] ], $t['invoice_number'] ), ';' );
 			}
 			rewind( $fh );
 			send_file( stream_get_contents( $fh ), 'Stunden.csv', 'text/csv; charset=utf-8', true );

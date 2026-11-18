@@ -119,6 +119,7 @@ Das PDF entsteht direkt in PHP, ohne Bibliothek:
 - Sitzungs-Cookie `HttpOnly`, `SameSite=Strict`, über HTTPS `Secure`; Änderungen nur per POST mit CSRF-Token
 - Strenge **Content-Security-Policy** (keine fremden oder eingebetteten Skripte), Ausgaben durchgehend maskiert
 - SQL nur mit vorbereiteten Abfragen; Uploads nach Inhalt geprüft; Logos werden bereinigt (nur Formen)
+- CSV-Exporte gegen eingeschleuste Excel-Formeln geschützt; Cronjob gegen doppelte Läufe gesperrt (keine doppelten Rechnungen oder Mails)
 - **SMTP-Passwort verschlüsselt** (AES-256-GCM), Schlüssel getrennt von der Datenbank; Versand nur über TLS mit Zertifikatsprüfung
 - Datenordner per `.htaccess` gesperrt – die App prüft das selbst (Einstellungen → Sicherheit)
 - **Updates** nur von GitHub über HTTPS, Prüfsumme wird kontrolliert, vorher automatische Sicherung

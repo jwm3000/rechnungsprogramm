@@ -16,7 +16,11 @@ if ( ! $cli && ! hash_equals( nw_cron_key(), (string) ( $_GET['key'] ?? '' ) ) )
 	exit( 'Forbidden' );
 }
 header( 'Content-Type: text/plain; charset=utf-8' );
-$done = nw_recurring_run_due();
+try {
+	$done = nw_recurring_run_due();
+} catch ( NW_Error $e ) {
+	exit( $e->getMessage() . "\n" );
+}
 if ( ! $done ) {
 	echo "Nichts fällig.\n";
 }

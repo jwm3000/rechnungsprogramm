@@ -197,6 +197,38 @@ eq( array( $rd['recurring_next'], nw_recurring_get( $rr['id'] )['next_date'] ), 
 nw_recurring_delete( $rr['id'] );
 eq( (int) q_val( 'SELECT COUNT(*) FROM recurring WHERE id = ?', array( $rr['id'] ) ), 0, 'Dauerrechnung mit erstellten Rechnungen löschbar' );
 
+$pdftext = function ( $pdf ) {
+	preg_match_all( '/stream\n(.*?)\nendstream/s', $pdf, $m );
+	return implode( '', array_map( function ( $x ) { return @gzuncompress( $x ) ?: $x; }, $m[1] ) );
+};
+section( 'Gesamtprüfung: Korrekturen' );
+eq( array_map( 'nw_num', array( '1.234,50', '2.500', '1.000.000', '3.5', '3,5', '€ 12,30', '-5,00', '', 'abc', 12.5 ) ), array( 1234.5, 2500.0, 1000000.0, 3.5, 3.5, 12.3, -5.0, 0.0, 0.0, 12.5 ), 'Zahlen: Tausenderpunkt, Komma, Punkt, Eurozeichen' );
+$hc = nw_customer_save( array( 'company' => 'Nur Stunden' ) );
+nw_time_save( array( 'customer_id' => $hc['id'], 'hours' => 1 ) );
+eq( nw_customer_delete( $hc['id'] ), 'archived', 'Kunde mit Stunden wird archiviert statt Datenbankfehler' );
+$lock = fopen( nw_data_dir() . '/cron.lock', 'c' );
+flock( $lock, LOCK_EX );
+throws( function () { nw_recurring_run_due(); }, 'Cron läuft schon → zweiter Lauf wird abgewiesen' );
+flock( $lock, LOCK_UN );
+fclose( $lock );
+$rf     = nw_recurring_save( array( 'customer_id' => $c['id'], 'items' => array( array( 'name' => 'X', 'qty' => 1, 'price' => 1 ) ), 'interval_months' => 1, 'next_date' => '2026-01-01', 'mode' => 'issue', 'active' => 1 ) );
+q( "UPDATE recurring SET items = '[]' WHERE id = ?", array( $rf['id'] ) );
+$before = (int) q_val( 'SELECT COUNT(*) FROM invoices' );
+throws( function () use ( $rf ) { nw_recurring_run( $rf['id'] ); }, 'Ausstellen scheitert → Fehler' );
+eq( array( (int) q_val( 'SELECT COUNT(*) FROM invoices' ), nw_recurring_get( $rf['id'] )['next_date'] ), array( $before, '2026-01-01' ), 'kein verwaister Entwurf, Datum bleibt' );
+nw_recurring_delete( $rf['id'] );
+eq( array( nw_csv_text( '=HYPERLINK("x")' ), nw_csv_text( '@SUM(A1)' ), nw_csv_text( 'Kegelclub' ) ), array( '\'=HYPERLINK("x")', '\'@SUM(A1)', 'Kegelclub' ), 'CSV: Formeln entschärft' );
+$hdr = NW_SMTP::header_encode( "Rechnung 1019 – Getränke & Ausschank für den Stammtisch „Zum Durstigen Hirschen“\r\nBcc: x@y.at" );
+$dec = implode( '', array_map( function ( $p ) { return base64_decode( substr( trim( $p ), 10, -2 ) ); }, explode( "\r\n", $hdr ) ) );
+ok( max( array_map( 'strlen', explode( "\r\n", $hdr ) ) ) <= 76 && false === strpos( $dec, "\n" ) && 0 === strpos( $dec, 'Rechnung 1019 – Getränke' ), 'Betreff: Stücke ≤ 76 Zeichen, ohne Zeilenumbruch, verlustfrei' );
+$tp = new NW_PDF();
+$lines = $tp->wrap( 'Siehe https://www.jwm3000.example/sehr/langer/pfad/ohne/leerzeichen/rechnung-1019-anhang.pdf', 120, 9 );
+ok( count( $lines ) > 1 && max( array_map( function ( $l ) use ( $tp ) { return $tp->width( $l, 9 ); }, $lines ) ) <= 120, 'überlange Wörter werden umbrochen' );
+$tc  = nw_customer_save( array( 'company' => 'Dvořák & Kovačić OG', 'person' => 'Łucja Nowak' ) );
+$tdi = nw_invoice_get( nw_invoice_save( array( 'customer_id' => $tc['id'], 'items' => array( array( 'name' => 'Beratung', 'qty' => 1, 'price' => 1 ) ) ) )['id'] );
+$tpd = $pdftext( NW_Document::render( $tdi ) );
+ok( false !== strpos( $tpd, "Dvor\xE1k & Kovacic OG" ) && false !== strpos( $tpd, 'Lucja Nowak' ), 'PDF: č, ř, ł werden zu c, r, l statt „?“' );
+
 section( 'Dauerrechnung: Vorschau & eigener E-Mail-Text' );
 $rbase = array( 'customer_id' => $c['id'], 'items' => array( array( 'name' => 'Hosting {MONAT}', 'qty' => 1, 'price' => 20 ) ), 'interval_months' => 1, 'next_date' => '2027-03-01', 'mode' => 'send', 'active' => 1 );
 $pv    = nw_recurring_preview( $rbase );
@@ -264,10 +296,6 @@ echo "    Seiten normal $off, geschrumpft $auto\n";
 ok( 1 === $auto, 'lange Rechnung passt geschrumpft auf eine Seite' );
 ok( null !== NW_QR::epc_payload( 'Test GmbH', 'AT61 1904 3002 3457 3201', 'BKAUATWW', 12.5, 'Rechnung 1' ), 'SEPA-QR-Inhalt' );
 eq( NW_QR::epc_payload( 'X', 'kaputt', '', 1, '' ), null, 'ungültige IBAN → kein QR' );
-$pdftext = function ( $pdf ) {
-	preg_match_all( '/stream\n(.*?)\nendstream/s', $pdf, $m );
-	return implode( '', array_map( function ( $x ) { return @gzuncompress( $x ) ?: $x; }, $m[1] ) );
-};
 $nu = nw_invoice_get( nw_invoice_save( array( 'items' => array( array( 'name' => 'Ohne Einheit', 'qty' => 1, 'price' => 1 ) ) ) )['id'] );
 ok( false === strpos( $pdftext( NW_Document::render( $nu ) ), '(Einheit)' ), 'ohne Einheiten keine Spalte „Einheit“' );
 $wu = nw_invoice_get( nw_invoice_save( array( 'items' => array( array( 'name' => 'Mit', 'qty' => 1, 'unit' => 'Std.', 'price' => 1 ) ) ) )['id'] );

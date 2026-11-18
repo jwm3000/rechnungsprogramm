@@ -264,6 +264,10 @@ function nw_update_install() {
 	@unlink( $tmp );
 	$bname = 'sicherung-' . NW_APP . '-' . date( 'Ymd-His' ) . '.zip';
 	file_put_contents( nw_data_dir( 'updates' ) . '/' . $bname, nw_zip( $backup ) );
+	// Nur die letzten 5 Sicherungen behalten – jede enthält Programm und komplette Datenbank
+	foreach ( array_slice( nw_update_backups(), 5 ) as $old ) {
+		@unlink( nw_data_dir( 'updates' ) . '/' . $old['name'] );
+	}
 
 	// Dateien schreiben (je Datei atomar über temporäre Datei + rename)
 	foreach ( $files as $rel => $data ) {

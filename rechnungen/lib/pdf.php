@@ -192,6 +192,19 @@ class NW_PDF {
 		foreach ( preg_split( "/\r\n|\n|\r/", (string) $text ) as $para ) {
 			$line = '';
 			foreach ( preg_split( '/\s+/', trim( $para ) ) as $word ) {
+				// Überlange Wörter (Links, IBAN ohne Leerzeichen …) hart trennen statt über den Rand laufen
+				while ( $this->width( $word, $size, $bold ) > $max && mb_strlen( $word ) > 1 ) {
+					if ( '' !== $line ) {
+						$out[] = $line;
+						$line  = '';
+					}
+					$cut = mb_strlen( $word ) - 1;
+					while ( $cut > 1 && $this->width( mb_substr( $word, 0, $cut ), $size, $bold ) > $max ) {
+						--$cut;
+					}
+					$out[] = mb_substr( $word, 0, $cut );
+					$word  = mb_substr( $word, $cut );
+				}
 				$try = '' === $line ? $word : $line . ' ' . $word;
 				if ( '' !== $line && $this->width( $try, $size, $bold ) > $max ) {
 					$out[] = $line;
@@ -270,8 +283,26 @@ class NW_PDF {
 		$this->pages[ $this->cur ] .= $s . "\n";
 	}
 
+	/**
+	 * Buchstaben, die Windows-1252 (und damit die eingebaute Helvetica) nicht kennt, auf den nächstliegenden
+	 * abbilden – sonst stünde „Dvo?ák“ statt „Dvorák“ auf der Rechnung.
+	 */
+	private static $translit = array(
+		'č' => 'c', 'Č' => 'C', 'ć' => 'c', 'Ć' => 'C', 'ř' => 'r', 'Ř' => 'R', 'ě' => 'e', 'Ě' => 'E', 'ů' => 'u', 'Ů' => 'U',
+		'ď' => 'd', 'Ď' => 'D', 'ť' => 't', 'Ť' => 'T', 'ň' => 'n', 'Ň' => 'N', 'ľ' => 'l', 'Ľ' => 'L', 'ĺ' => 'l', 'Ĺ' => 'L',
+		'ŕ' => 'r', 'Ŕ' => 'R', 'ő' => 'ö', 'Ő' => 'Ö', 'ű' => 'ü', 'Ű' => 'Ü', 'ł' => 'l', 'Ł' => 'L', 'ń' => 'n', 'Ń' => 'N',
+		'ś' => 's', 'Ś' => 'S', 'ź' => 'z', 'Ź' => 'Z', 'ż' => 'z', 'Ż' => 'Z', 'ą' => 'a', 'Ą' => 'A', 'ę' => 'e', 'Ę' => 'E',
+		'đ' => 'd', 'Đ' => 'D', 'ă' => 'a', 'Ă' => 'A', 'ș' => 's', 'Ș' => 'S', 'ş' => 's', 'Ş' => 'S', 'ț' => 't', 'Ț' => 'T',
+		'ţ' => 't', 'Ţ' => 'T', 'ğ' => 'g', 'Ğ' => 'G', 'ı' => 'i', 'İ' => 'I', 'ā' => 'a', 'Ā' => 'A', 'ē' => 'e', 'Ē' => 'E',
+		'ī' => 'i', 'Ī' => 'I', 'ū' => 'u', 'Ū' => 'U', 'ė' => 'e', 'Ė' => 'E', 'ų' => 'u', 'Ų' => 'U', 'ķ' => 'k', 'ļ' => 'l',
+		'ņ' => 'n', 'ģ' => 'g', '−' => '-', '‐' => '-', '‑' => '-', '→' => '->', '←' => '<-', '≤' => '<=', '≥' => '>=', '✓' => 'x', '✔' => 'x',
+	);
+
 	private function encode( $text ) {
 		$text = str_replace( array( "\xE2\x80\xAF", "\xC2\xA0" ), ' ', (string) $text ); // geschützte Leerzeichen.
+		if ( preg_match( '/[^\x00-\x{FF}€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ]/u', $text ) ) {
+			$text = strtr( $text, self::$translit );
+		}
 		if ( function_exists( 'mb_convert_encoding' ) ) {
 			return mb_convert_encoding( $text, 'Windows-1252', 'UTF-8' );
 		}
