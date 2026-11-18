@@ -399,6 +399,8 @@ a.list-item:hover .li-title { color: var(--accent); }
 .b-mode-draft { background: var(--warn-soft); color: var(--warn); }
 .b-mode-issue { background: var(--line-2); color: var(--ink-2); }
 .b-missing { background: var(--bad-soft); color: var(--bad); }
+.b-paused { background: var(--warn-soft); color: var(--warn); }
+tr.paused > td:not(.m-c) { opacity: .55; }
 .badge svg { width: 13px; height: 13px; flex: none; }
 
 /* Wiederkehrend: rundes Symbol rechts neben dem Namen */

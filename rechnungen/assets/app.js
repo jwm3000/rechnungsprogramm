@@ -2109,10 +2109,10 @@
 					${sum ? `<div class="ys-sum">${moneyShort(sum)}</div>` : ''}</div>`; }).join('')}</div>
 			</div>
 			<div class="card"><div class="table-wrap"><table class="table resp"><thead><tr><th>Kunde</th><th class="hide-m">Rhythmus</th><th>Nächste</th><th class="hide-m">Versand</th><th class="th-r">Betrag</th><th class="th-r hide-m">Pro Jahr</th><th class="hide-m" style="width:84px"><span class="sr">Vorschau</span></th></tr></thead><tbody>
-				${list.map((r) => `<tr class="click" data-id="${r.id}" style="${+r.active ? '' : 'opacity:.55'}">
+				${list.map((r) => `<tr class="click ${+r.active ? '' : 'paused'}" data-id="${r.id}">
 					<td class="m-b m-wide strong">${esc(r.customer_name)}<div class="sub">${esc(r.title || '')}${r.items.length ? ' · ' + esc(r.items.map((i) => i.name).join(', ')) : ''}</div></td>
 					<td class="m-hide muted">${INTERVALS[r.interval_months]}</td>
-					<td class="m-c">${r.due ? '<span class="badge b-open">fällig</span>' : +r.active ? date(r.next_date) : '<span class="badge">pausiert</span>'}</td>
+					<td class="m-c">${r.due ? '<span class="badge b-open">fällig</span>' : +r.active ? date(r.next_date) : '<span class="badge b-paused" title="Nicht aktiv – es werden keine Rechnungen erstellt">pausiert</span>'}</td>
 					<td class="m-e">${r.email_missing && +r.active
 						? `<span class="badge plain b-missing" title="Automatisch senden ist eingestellt, aber es gibt keine E-Mail-Adresse">${icon('alert')} E-Mail fehlt</span>`
 						: `<span class="badge plain b-mode-${r.mode}">${r.mode === 'send' ? icon('send') : r.mode === 'draft' ? icon('edit') : icon('file')} ${MODE_LABEL[r.mode]}</span>`}</td>
