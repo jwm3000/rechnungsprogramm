@@ -2416,7 +2416,8 @@
 				<h3 style="margin:26px 0 4px">Vorlage für E-Mails</h3>
 				<p class="muted" style="font-size:13.5px;margin-bottom:12px">Gilt für Rechnungen, Angebote, Zahlungserinnerungen und Dauerrechnungen. Die Rechnung hängt immer als PDF an, den Text stellst du unter <a href="#/einstellungen/texte">Rechnungstexte</a> ein.</p>
 				<div class="mtpl" id="mtpl" role="radiogroup" aria-label="Vorlage für E-Mails"></div>
-				<div class="mtpl-preview"><div class="mtpl-bar">${icon('eye')}<span>Vorschau mit deiner letzten Rechnung</span></div><div id="mtplview"></div></div>
+				<div class="mtpl-preview"><div class="mtpl-bar">${icon('eye')}<span class="grow">Vorschau mit deiner letzten Rechnung</span>
+					<div class="seg" id="mtplmode" role="group" aria-label="Darstellung"><button type="button" data-pm="light" class="on">Hell</button><button type="button" data-pm="dark">Dunkel</button></div></div><div id="mtplview"></div></div>
 				<h3 style="margin:26px 0 8px">Automatik für Dauerrechnungen (Cronjob)</h3>
 				<p class="muted" style="margin-bottom:10px">Beim Webhoster einen täglichen Cronjob anlegen (z. B. 7:00 Uhr). Er erstellt fällige Dauerrechnungen und verschickt sie.</p>
 				<div class="hint" style="display:flex;flex-direction:column;gap:8px"><div>Als Befehl: <code>php ${esc('/pfad/zu/rechnungen/cron.php')}</code></div><div>oder als URL: <code id="cronurl">${esc(base + S.cron_url)}</code> <button class="btn sm" data-copy>${icon('copy')} Kopieren</button></div>
@@ -2559,6 +2560,8 @@
 	/**
 	 * Logo als PNG für E-Mails erzeugen und hochladen. Gmail und Outlook zeigen kein SVG –
 	 * der Browser rastert es einmal in doppelter Auflösung (56 px Anzeigehöhe → 112 px).
+	 * Dazu eine weiße Fassung für den Dark-Mode (alle sichtbaren Pixel weiß, Transparenz bleibt) –
+	 * nur wenn das Logo durchsichtige Stellen hat, sonst ergäbe sie ein weißes Rechteck.
 	 */
 	async function makeMailLogo() {
 		const raw = ($('#logo-svg')?.textContent || '').trim();
@@ -2581,11 +2584,22 @@
 			if (w > 520) { h = Math.max(1, Math.round((h * 520) / w)); w = 520; }
 			const c = document.createElement('canvas');
 			c.width = w; c.height = h;
-			c.getContext('2d').drawImage(img, 0, 0, w, h);
-			const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+			const ctx = c.getContext('2d');
+			ctx.drawImage(img, 0, 0, w, h);
 			const fd = new FormData();
-			fd.append('png', blob, 'logo-mail.png');
+			fd.append('png', await new Promise((r) => c.toBlob(r, 'image/png')), 'logo-mail.png');
+			const px = ctx.getImageData(0, 0, w, h);
+			let clear = 0;
+			for (let i = 3; i < px.data.length; i += 4) if (px.data[i] < 200) clear++;
+			if (clear > (w * h) / 20) { // mindestens 5 % durchsichtig
+				for (let i = 0; i < px.data.length; i += 4) { px.data[i] = px.data[i + 1] = px.data[i + 2] = 255; }
+				const d = document.createElement('canvas');
+				d.width = w; d.height = h;
+				d.getContext('2d').putImageData(px, 0, 0);
+				fd.append('png_dark', await new Promise((r) => d.toBlob(r, 'image/png')), 'logo-mail-dunkel.png');
+			}
 			await api('mail_logo_save', fd);
+			S.mail.logo_v = '2';
 			return true;
 		} finally { if (tmp) URL.revokeObjectURL(tmp); }
 	}
@@ -2609,13 +2623,17 @@
 			}).join('');
 			$$('[data-tpl]', box).forEach((b) => (b.onclick = () => choose(b.dataset.tpl)));
 		};
+		let dark = false;
+		$$('#mtplmode [data-pm]').forEach((b) => (b.onclick = () => { dark = b.dataset.pm === 'dark'; $$('#mtplmode [data-pm]').forEach((x) => x.classList.toggle('on', x === b)); preview(); }));
 		const preview = async () => {
 			const view = $('#mtplview');
 			if (!view) return;
 			let r;
-			try { r = await api('mail_template_preview', undefined, { query: { tpl: S.mail.template || 'standard' } }); } catch (e) { view.innerHTML = ''; return; }
+			try { r = await api('mail_template_preview', undefined, { query: { tpl: S.mail.template || 'standard', dark: dark ? 1 : '' } }); } catch (e) { view.innerHTML = ''; return; }
+			$('#mtplmode').hidden = !r.html;
 			if (!r.html) { view.innerHTML = `<pre class="mtpl-text">${esc(r.text)}</pre>`; return; }
-			view.innerHTML = `<iframe class="mtpl-frame" sandbox="allow-same-origin" title="Vorschau der E-Mail"></iframe>`;
+			// Farbschema am Vorschaufenster festlegen – sonst übernimmt es den Dark-Mode des Browsers
+			view.innerHTML = `<iframe class="mtpl-frame" sandbox="allow-same-origin" title="Vorschau der E-Mail" style="color-scheme:${dark ? 'dark' : 'light'};background:${dark ? '#000' : '#f4f5f7'}"></iframe>`;
 			const fr = $('iframe', view);
 			fr.onload = () => { try { fr.style.height = fr.contentDocument.documentElement.scrollHeight + 'px'; } catch (e) { /* Höhe bleibt */ } };
 			fr.srcdoc = r.html;
@@ -2914,6 +2932,8 @@
 		renderShell();
 		route();
 		checkUpdate();
+		// Mail-Logo aus älterer Version (ohne weiße Fassung für den Dark-Mode) einmal neu erzeugen
+		if (S.mail.template === 'logo' && S.mail.logo_ready && S.mail.logo_v !== '2') makeMailLogo().catch(() => {});
 	}
 
 	function renderAuth(hasPassword) {

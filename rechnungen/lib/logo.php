@@ -376,8 +376,9 @@ function nw_logo_raster_file() {
 
 /* ==================================================================== Logo für E-Mails */
 
-function nw_mail_logo_file() {
-	return nw_data_dir() . '/logo-mail.png';
+/** $dark: weiße Fassung für den Dark-Mode des Mailprogramms. */
+function nw_mail_logo_file( $dark = false ) {
+	return nw_data_dir() . ( $dark ? '/logo-mail-dark.png' : '/logo-mail.png' );
 }
 
 /**
@@ -386,8 +387,11 @@ function nw_mail_logo_file() {
  *
  * @return array{type:string, ext:string, data:string, w:int, h:int}|null
  */
-function nw_mail_logo() {
-	$f = nw_mail_logo_file();
+function nw_mail_logo( $dark = false ) {
+	$f = nw_mail_logo_file( $dark );
+	if ( $dark && ! is_file( $f ) ) {
+		return null;
+	}
 	if ( ! is_file( $f ) ) {
 		$f = nw_logo_raster_file();
 		if ( '' === $f || filesize( $f ) > 400 * 1024 ) {
@@ -403,14 +407,25 @@ function nw_mail_logo() {
 	return array( 'type' => $png ? 'image/png' : 'image/jpeg', 'ext' => $png ? 'png' : 'jpg', 'data' => $data, 'w' => (int) $size[0], 'h' => (int) $size[1] );
 }
 
-/** PNG des Logos für E-Mails speichern (erzeugt der Browser aus dem Logo). */
-function nw_mail_logo_save( $bin ) {
-	$size = strlen( $bin ) <= 400 * 1024 ? @getimagesizefromstring( $bin ) : false;
-	if ( "\x89PNG" !== substr( $bin, 0, 4 ) || ! $size || IMAGETYPE_PNG !== $size[2] || $size[0] > 1600 || $size[1] > 800 ) {
-		throw new RuntimeException( 'Das Logo für E-Mails muss ein PNG bis 400 KB und 1600 × 800 Pixel sein.' );
+/**
+ * PNG des Logos für E-Mails speichern (erzeugt der Browser aus dem Logo) – samt weißer Fassung für den
+ * Dark-Mode, falls das Logo durchsichtige Stellen hat (sonst gibt es keine, $dark = null).
+ */
+function nw_mail_logo_save( $bin, $dark = null ) {
+	foreach ( null === $dark ? array( $bin ) : array( $bin, $dark ) as $png ) {
+		$size = strlen( $png ) <= 400 * 1024 ? @getimagesizefromstring( $png ) : false;
+		if ( "\x89PNG" !== substr( $png, 0, 4 ) || ! $size || IMAGETYPE_PNG !== $size[2] || $size[0] > 1600 || $size[1] > 800 ) {
+			throw new RuntimeException( 'Das Logo für E-Mails muss ein PNG bis 400 KB und 1600 × 800 Pixel sein.' );
+		}
+		nw_png_to_pdf( $png ); // prüft, ob sich das Bild wirklich lesen lässt
 	}
-	nw_png_to_pdf( $bin ); // prüft, ob sich das Bild wirklich lesen lässt
 	file_put_contents( nw_mail_logo_file(), $bin );
+	if ( null === $dark ) {
+		@unlink( nw_mail_logo_file( true ) );
+	} else {
+		file_put_contents( nw_mail_logo_file( true ), $dark );
+	}
+	nw_set_setting( 'mail_logo_v', '2' );
 }
 
 /** Logo für die Oberfläche: bereinigtes SVG oder <img> mit eingebettetem PNG/JPG. */
@@ -634,7 +649,7 @@ function nw_logo_save( $bin ) {
 }
 
 function nw_logo_delete() {
-	foreach ( array( 'logo.svg', 'logo.png', 'logo.jpg', 'logo.cache.json', 'logo.pdfimg', 'logo-mail.png' ) as $f ) {
+	foreach ( array( 'logo.svg', 'logo.png', 'logo.jpg', 'logo.cache.json', 'logo.pdfimg', 'logo-mail.png', 'logo-mail-dark.png' ) as $f ) {
 		@unlink( nw_data_dir() . '/' . $f );
 	}
 	nw_logo( true );

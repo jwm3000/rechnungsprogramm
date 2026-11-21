@@ -258,8 +258,16 @@ ok( 1 === count( $mp['inline'] ) && false !== strpos( $mp['html'], 'src="cid:' .
 ok( false !== strpos( nw_mail_parts( 'Hallo', 'logo', true )['html'], 'src="data:image/png;base64,' ), 'Vorschau: Logo als data-URL' );
 $raw = NW_SMTP::build( array( 'from' => 'a@b.at', 'to' => array( 'c@d.at' ), 'subject' => 'T', 'text' => 't', 'html' => $mp['html'], 'inline' => $mp['inline'], 'attachments' => array( array( 'name' => 'R.pdf', 'type' => 'application/pdf', 'data' => 'x' ) ) ) );
 ok( false !== strpos( $raw, 'multipart/related' ) && false !== strpos( $raw, 'Content-ID: <' . $mp['inline'][0]['cid'] . '>' ) && false !== strpos( $raw, 'Content-Disposition: attachment; filename="R.pdf"' ), 'MIME: HTML + eingebettetes Logo + PDF-Anhang' );
+$png1 = base64_decode( 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' );
+nw_mail_logo_save( $png1, $png1 );
+$md = nw_mail_parts( 'Hallo', 'logo' );
+ok( 2 === count( $md['inline'] ) && false !== strpos( $md['html'], 'class="nw-lgd"' ) && false !== strpos( $md['html'], '@media (prefers-color-scheme: dark)' ) && false !== strpos( $md['html'], 'name="color-scheme" content="light dark"' ), 'Dark-Mode: weiße Logo-Fassung eingebettet, dunkle Farben per Media-Query' );
+ok( false !== strpos( nw_mail_parts( 'Hallo', 'logo', true, true )['html'], '<style>:root{color-scheme:light dark;supported-color-schemes:light dark}.nw-bg' ), 'Vorschau „Dunkel“: dunkle Farben ohne Media-Query' );
+nw_mail_logo_save( $png1 );
+ok( ! is_file( nw_mail_logo_file( true ) ) && false !== strpos( nw_mail_parts( 'Hallo', 'logo' )['html'], '.nw-plate{' ), 'Logo ohne Transparenz: keine weiße Fassung, im Dunkeln helles Feld' );
+nw_mail_logo_save( $png1, $png1 );
 nw_logo_delete();
-ok( ! is_file( nw_mail_logo_file() ), 'Logo entfernen löscht auch das Mail-Logo' );
+ok( ! is_file( nw_mail_logo_file() ) && ! is_file( nw_mail_logo_file( true ) ), 'Logo entfernen löscht auch beide Mail-Logos' );
 
 section( 'Anschrift' );
 $an = nw_invoice_save( array( 'customer_id' => $c['id'], 'recipient' => array( 'lines' => array( 'Eigene Firma', 'z. H. Obmann', 'Gasse 1' ) ), 'refresh_recipient' => false, 'items' => array( array( 'name' => 'A', 'qty' => 1, 'price' => 1 ) ) ) );

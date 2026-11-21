@@ -357,6 +357,7 @@ function nw_settings_defaults() {
 		'smtp_reply_to'      => '',
 		'pay_box'            => 'qr',
 		'mail_template'      => 'standard',
+		'mail_logo_v'        => '', // 2 = Mail-Logo mit weißer Fassung für den Dark-Mode erzeugt
 		'mail_subject'       => 'Rechnung {NUMMER} – {FIRMA}',
 		'mail_body'          => "{ANREDE}\n\nim Anhang finden Sie die Rechnung {NUMMER} vom {DATUM} über {BETRAG}.\n{ZAHLUNG}\n\nVielen Dank für die gute Zusammenarbeit!\n\nMit freundlichen Grüßen\n{INHABER}",
 		'remind_subject'     => 'Zahlungserinnerung zu Rechnung {NUMMER}',

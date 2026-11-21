@@ -393,25 +393,40 @@ function nw_mail_template() {
  *
  * @return array{html:string, inline:array}
  */
-function nw_mail_parts( $text, $tpl = null, $preview = false ) {
+function nw_mail_parts( $text, $tpl = null, $preview = false, $force_dark = false ) {
 	$tpl = $tpl ?? nw_mail_template();
 	if ( 'text' === $tpl ) {
 		return array( 'html' => '', 'inline' => array() );
 	}
 	$logo = 'logo' === $tpl ? nw_mail_logo() : null;
 	if ( ! $logo ) {
-		return array( 'html' => nw_mail_html( $text ), 'inline' => array() );
+		return array( 'html' => nw_mail_html( $text, array(), $force_dark ), 'inline' => array() );
 	}
-	$cid = 'logo-' . bin2hex( random_bytes( 6 ) ) . '@rechnungen';
-	$src = $preview ? 'data:' . $logo['type'] . ';base64,' . base64_encode( $logo['data'] ) : 'cid:' . $cid;
-	return array(
-		'html'   => nw_mail_html( $text, $src, $logo['w'], $logo['h'] ),
-		'inline' => $preview ? array() : array( array( 'cid' => $cid, 'name' => 'logo.' . $logo['ext'], 'type' => $logo['type'], 'data' => $logo['data'] ) ),
-	);
+	// Normales Logo und (falls vorhanden) weiße Fassung für den Dark-Mode – beide eingebettet
+	$inline = array();
+	$src    = array();
+	foreach ( array( 'light' => $logo, 'dark' => nw_mail_logo( true ) ) as $k => $l ) {
+		if ( ! $l ) {
+			continue;
+		}
+		$cid       = 'logo-' . $k . '-' . bin2hex( random_bytes( 5 ) ) . '@rechnungen';
+		$src[ $k ] = $preview ? 'data:' . $l['type'] . ';base64,' . base64_encode( $l['data'] ) : 'cid:' . $cid;
+		$inline[]  = array( 'cid' => $cid, 'name' => 'light' === $k ? 'logo.' . $l['ext'] : 'logo-dunkel.' . $l['ext'], 'type' => $l['type'], 'data' => $l['data'] );
+	}
+	$src['w'] = $logo['w'];
+	$src['h'] = $logo['h'];
+	return array( 'html' => nw_mail_html( $text, $src, $force_dark ), 'inline' => $preview ? array() : $inline );
 }
 
-/** HTML-Fassung: Karte mit Firmenname als Kopf – oder mit Logo, wenn $logo_src gesetzt ist. */
-function nw_mail_html( $text, $logo_src = '', $w = 0, $h = 0 ) {
+/**
+ * HTML-Fassung: Karte mit Firmenname als Kopf – oder mit Logo ($logo: light, dark, w, h).
+ *
+ * Dark-Mode: Die Mail erklärt „hell und dunkel“ und bringt eigene dunkle Farben mit (Apple Mail, iOS,
+ * macOS halten sich daran). Im Dark-Mode wird die weiße Logo-Fassung gezeigt; gibt es keine
+ * (Logo ohne durchsichtige Stellen), steht das normale Logo auf einem hellen Feld.
+ * $force_dark: dunkle Farben immer (Vorschau in den Einstellungen).
+ */
+function nw_mail_html( $text, array $logo = array(), $force_dark = false ) {
 	$s      = nw_settings();
 	$accent = preg_match( '/^#[0-9a-f]{6}$/i', $s['accent'] ) ? $s['accent'] : '#16171a';
 	$paras  = '';
@@ -419,25 +434,52 @@ function nw_mail_html( $text, $logo_src = '', $w = 0, $h = 0 ) {
 		$paras .= '<p style="margin:0 0 14px">' . nl2br( htmlspecialchars( $p, ENT_QUOTES, 'UTF-8' ) ) . '</p>';
 	}
 	$foot = htmlspecialchars( implode( ' · ', array_filter( array( $s['company'], $s['street'], trim( $s['zip'] . ' ' . $s['city'] ), $s['web'] ) ) ), ENT_QUOTES, 'UTF-8' );
-	return '<!doctype html><html lang="de"><body style="margin:0;background:#f4f5f7;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#16171a">'
-		. '<div style="max-width:560px;margin:0 auto;padding:28px 16px">'
-		. '<div style="background:#fff;border-radius:10px;border-top:4px solid ' . $accent . ';padding:28px 28px 14px;font-size:15px;line-height:1.55">'
-		. ( '' !== $logo_src
-			? '<div style="margin-bottom:24px">' . nw_mail_logo_img( $logo_src, $w, $h, $s['company'] ) . '</div>'
-			: '<div style="font-size:20px;letter-spacing:-.02em;margin-bottom:22px">[ ' . htmlspecialchars( mb_strtolower( $s['company'] ), ENT_QUOTES, 'UTF-8' ) . ' ]</div>' )
+
+	// Akzentlinie im Dunkeln: sehr dunkle Akzente (Schwarz) würden verschwinden → hell
+	list( $r, $g, $b ) = sscanf( $accent, '#%02x%02x%02x' );
+	$dark_accent       = ( 0.2126 * $r + 0.7152 * $g + 0.0722 * $b ) / 255 < 0.35 ? '#e5e5ea' : $accent;
+	$has_dark_logo     = ! empty( $logo['dark'] );
+	$dark_css          = '.nw-bg{background:#000000 !important}'
+		. '.nw-card{background:#1c1c1e !important;border-top-color:' . $dark_accent . ' !important}'
+		. '.nw-card,.nw-card p,.nw-name{color:#f2f2f7 !important}.nw-foot{color:#98989f !important}'
+		. ( $has_dark_logo
+			? '.nw-lg{display:none !important}.nw-lgd{display:block !important;max-height:none !important;overflow:visible !important}'
+			: '.nw-plate{background:#f4f5f7 !important;padding:10px 12px !important;border-radius:8px !important}' );
+	$style = '<style>:root{color-scheme:light dark;supported-color-schemes:light dark}'
+		. ( $force_dark ? $dark_css : '@media (prefers-color-scheme: dark){' . $dark_css . '}' )
+		// Outlook (App und outlook.com) kennzeichnet seinen Dark-Mode mit data-ogsc: Logo tauschen
+		. ( $has_dark_logo ? '[data-ogsc] .nw-lg{display:none !important}[data-ogsc] .nw-lgd{display:block !important;max-height:none !important;overflow:visible !important}' : '' )
+		. '</style>';
+
+	if ( ! empty( $logo['light'] ) ) {
+		$head = '<div style="margin-bottom:24px"><div class="nw-plate" style="display:inline-block">'
+			. nw_mail_logo_img( $logo['light'], $logo['w'], $logo['h'], $s['company'], 'nw-lg' )
+			. ( $has_dark_logo
+				// Outlook am PC (Word) blendet nicht zuverlässig aus – dort die weiße Fassung gar nicht ausgeben
+				? '<!--[if !mso]><!--><div class="nw-lgd" style="display:none;max-height:0;overflow:hidden;mso-hide:all">' . nw_mail_logo_img( $logo['dark'], $logo['w'], $logo['h'], $s['company'] ) . '</div><!--<![endif]-->'
+				: '' )
+			. '</div></div>';
+	} else {
+		$head = '<div class="nw-name" style="font-size:20px;letter-spacing:-.02em;margin-bottom:22px;color:#16171a">[ ' . htmlspecialchars( mb_strtolower( $s['company'] ), ENT_QUOTES, 'UTF-8' ) . ' ]</div>';
+	}
+	return '<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">' . $style . '</head>'
+		. '<body class="nw-bg" style="margin:0;background:#f4f5f7;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#16171a">'
+		. '<div class="nw-bg" style="max-width:560px;margin:0 auto;padding:28px 16px;background:#f4f5f7">'
+		. '<div class="nw-card" style="background:#ffffff;border-radius:10px;border-top:4px solid ' . $accent . ';padding:28px 28px 14px;font-size:15px;line-height:1.55;color:#16171a">'
+		. $head
 		. $paras
-		. '</div><div style="font-size:12px;color:#6b6e76;text-align:center;padding:14px">' . $foot . '</div></div></body></html>';
+		. '</div><div class="nw-foot" style="font-size:12px;color:#6b6e76;text-align:center;padding:14px">' . $foot . '</div></div></body></html>';
 }
 
 /** Logo-Bild mit fester Größe (Outlook braucht width/height): höchstens 56 px hoch und 260 px breit. */
-function nw_mail_logo_img( $src, $w, $h, $alt ) {
+function nw_mail_logo_img( $src, $w, $h, $alt, $class = '' ) {
 	$h2 = 56;
 	$w2 = $h ? (int) round( $w * $h2 / $h ) : 160;
 	if ( $w2 > 260 ) {
 		$h2 = (int) max( 1, round( $h2 * 260 / $w2 ) );
 		$w2 = 260;
 	}
-	return '<img src="' . htmlspecialchars( $src, ENT_QUOTES, 'UTF-8' ) . '" width="' . $w2 . '" height="' . $h2 . '" alt="' . htmlspecialchars( (string) $alt, ENT_QUOTES, 'UTF-8' ) . '" style="display:block;border:0;width:' . $w2 . 'px;height:' . $h2 . 'px">';
+	return '<img' . ( $class ? ' class="' . $class . '"' : '' ) . ' src="' . htmlspecialchars( $src, ENT_QUOTES, 'UTF-8' ) . '" width="' . $w2 . '" height="' . $h2 . '" alt="' . htmlspecialchars( (string) $alt, ENT_QUOTES, 'UTF-8' ) . '" style="display:block;border:0;width:' . $w2 . 'px;height:' . $h2 . 'px">';
 }
 
 /**

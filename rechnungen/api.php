@@ -112,7 +112,7 @@ try {
 					'next_offer'      => nw_next_offer_number(),
 					'recurring'       => nw_recurring_list(),
 					'next_number'     => nw_next_number(),
-					'mail'            => array( 'configured' => nw_mail_configured(), 'from' => $smtp['from'] ?: $smtp['user'], 'host' => $smtp['host'], 'bcc' => $smtp['bcc'], 'reply_to' => nw_reply_to( $smtp, $smtp['from'] ?: $smtp['user'] ), 'source' => $smtp['source'], 'has_pass' => '' !== $smtp['pass'], 'template' => nw_mail_template(), 'logo_ready' => (bool) nw_mail_logo() ),
+					'mail'            => array( 'configured' => nw_mail_configured(), 'from' => $smtp['from'] ?: $smtp['user'], 'host' => $smtp['host'], 'bcc' => $smtp['bcc'], 'reply_to' => nw_reply_to( $smtp, $smtp['from'] ?: $smtp['user'] ), 'source' => $smtp['source'], 'has_pass' => '' !== $smtp['pass'], 'template' => nw_mail_template(), 'logo_ready' => (bool) nw_mail_logo(), 'logo_v' => nw_setting( 'mail_logo_v' ) ),
 					'cron_url'        => 'cron.php?key=' . nw_cron_key(),
 					'today'           => nw_today(),
 					'version'         => NW_APP,
@@ -273,7 +273,7 @@ try {
 		case 'settings_save':
 			$allowed = array_keys( nw_settings_defaults() );
 			// interne Werte nie von außen setzbar (Update-Cache, Zeitstempel, Passwort-Felder)
-			$internal = array( 'cron_last', 'update_cache', 'smtp_pass_enc', 'password_hash', 'cron_key' );
+			$internal = array( 'cron_last', 'update_cache', 'smtp_pass_enc', 'password_hash', 'cron_key', 'mail_logo_v' );
 			foreach ( $in as $k => $v ) {
 				if ( in_array( $k, $allowed, true ) && ! in_array( $k, $internal, true ) && ! is_array( $v ) ) {
 					nw_set_setting( $k, trim( (string) $v ) );
@@ -376,19 +376,21 @@ try {
 		case 'mail_template_preview':
 			// Beispieltext: die letzte ausgestellte Rechnung, sonst die Vorlage mit Platzhaltern
 			$tpl  = isset( nw_mail_templates()[ $_GET['tpl'] ?? '' ] ) ? $_GET['tpl'] : nw_mail_template();
+			$dark = ! empty( $_GET['dark'] ); // Vorschau im Dark-Mode erzwingen
 			$last = q_val( "SELECT id FROM invoices WHERE kind = 'invoice' AND status != 'draft' ORDER BY invoice_date DESC, id DESC LIMIT 1" );
 			$text = $last ? nw_mail_compose( nw_invoice_get( $last ) )['body'] : preg_replace( '/\{[A-Z_]+\}/', '…', nw_setting( 'mail_body' ) );
-			out( array( 'template' => $tpl, 'text' => $text, 'html' => nw_mail_parts( $text, $tpl, true )['html'], 'logo' => (bool) nw_mail_logo() ) );
+			out( array( 'template' => $tpl, 'text' => $text, 'html' => nw_mail_parts( $text, $tpl, true, $dark )['html'], 'logo' => (bool) nw_mail_logo(), 'logo_dark' => (bool) nw_mail_logo( true ) ) );
 		case 'mail_logo_save':
 			if ( empty( $_FILES['png'] ) || UPLOAD_ERR_OK !== $_FILES['png']['error'] ) {
 				nw_fail( 'Kein Bild empfangen.' );
 			}
+			$dark = ! empty( $_FILES['png_dark'] ) && UPLOAD_ERR_OK === $_FILES['png_dark']['error'] ? (string) file_get_contents( $_FILES['png_dark']['tmp_name'] ) : null;
 			try {
-				nw_mail_logo_save( (string) file_get_contents( $_FILES['png']['tmp_name'] ) );
+				nw_mail_logo_save( (string) file_get_contents( $_FILES['png']['tmp_name'] ), $dark );
 			} catch ( RuntimeException $e ) {
 				nw_fail( $e->getMessage() );
 			}
-			out( array( 'ok' => true ) );
+			out( array( 'ok' => true, 'dark' => null !== $dark ) );
 		case 'storage':
 			out( nw_storage_info() );
 		case 'db_optimize':
